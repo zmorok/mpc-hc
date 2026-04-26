@@ -364,6 +364,8 @@ private:
     bool m_bDelaySetOutputRect;
 
     CRect m_lastWindowRect;
+    CRect m_videoOpenWindowRect;
+    bool m_bVideoOpenWindowRectValid = false;
 
     void SetDefaultWindowRect(int iMonitor = 0);
     void SetDefaultFullscreenState();
@@ -767,6 +769,11 @@ public:
     virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
     virtual void RecalcLayout(BOOL bNotify = TRUE);
     void EnableDocking(DWORD dwDockStyle);
+
+    void ToggleFullscreenWithVideoFrame(UINT nVideoFrameID);
+    void ApplyVideoFrameMode(UINT nVideoFrameID);
+    void SaveVideoOpenWindowRect();
+    void RestoreVideoOpenWindowRect();
 
     // DVB capture
     void UpdateCurrentChannelInfo(bool bShowOSD = true, bool bShowInfoBar = false);

@@ -1463,6 +1463,23 @@ BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 
 BOOL CMainFrame::PreTranslateMessage(MSG* pMsg)
 {
+    if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN) {
+        const bool ctrl  = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        const bool alt   = (::GetKeyState(VK_MENU)    & 0x8000) != 0;
+        const bool shift = (::GetKeyState(VK_SHIFT)   & 0x8000) != 0;
+
+        // protection from autorotate while holding "Enter"
+        if (!alt && !shift) {
+            if ((pMsg->lParam & 0x40000000) == 0) {
+                ToggleFullscreenWithVideoFrame(
+                    ctrl ? ID_VIEW_VF_STRETCH : ID_VIEW_VF_FROMINSIDE
+                );
+            }
+
+            return TRUE;
+        }
+    }
+
     if (pMsg->message == WM_KEYDOWN) {
         if (pMsg->wParam == VK_ESCAPE) {
             bool fEscapeNotAssigned = !AssignedToCmd(VK_ESCAPE);
@@ -1518,6 +1535,73 @@ BOOL CMainFrame::PreTranslateMessage(MSG* pMsg)
     }
 
     return __super::PreTranslateMessage(pMsg);
+}
+
+void CMainFrame::ApplyVideoFrameMode(UINT nVideoFrameID)
+{
+    if (GetLoadState() == MLS::LOADED && !m_fAudioOnly) {
+        OnViewDefaultVideoFrame(nVideoFrameID);
+    }
+}
+
+void CMainFrame::SaveVideoOpenWindowRect()
+{
+    if (!::IsWindow(m_hWnd)) {
+        return;
+    }
+
+    if (IsFullScreenMode()) {
+        return;
+    }
+
+    if (IsIconic()) {
+        return;
+    }
+
+    GetWindowRect(&m_videoOpenWindowRect);
+    m_bVideoOpenWindowRectValid = !m_videoOpenWindowRect.IsRectEmpty();
+}
+
+void CMainFrame::RestoreVideoOpenWindowRect()
+{
+    if (!m_bVideoOpenWindowRectValid || m_videoOpenWindowRect.IsRectEmpty()) {
+        return;
+    }
+
+    if (!::IsWindow(m_hWnd)) {
+        return;
+    }
+
+    SetWindowPos(
+        nullptr,
+        m_videoOpenWindowRect.left,
+        m_videoOpenWindowRect.top,
+        m_videoOpenWindowRect.Width(),
+        m_videoOpenWindowRect.Height(),
+        SWP_NOZORDER | SWP_NOACTIVATE
+    );
+
+    MoveVideoWindow();
+}
+
+void CMainFrame::ToggleFullscreenWithVideoFrame(UINT nVideoFrameID)
+{
+    const bool bWasFullScreen = IsFullScreenMode();
+
+    if (!bWasFullScreen) {
+        // saving current position before fullscreen
+        SaveVideoOpenWindowRect();
+
+        ToggleFullscreen(true, false);
+        ApplyVideoFrameMode(nVideoFrameID);
+    } else {
+        // in ending set "Fit frame"
+        // and restore position 
+        ApplyVideoFrameMode(ID_VIEW_VF_FROMINSIDE);
+
+        ToggleFullscreen(true, false);
+        RestoreVideoOpenWindowRect();
+    }
 }
 
 void CMainFrame::RecalcLayout(BOOL bNotify)
@@ -4335,7 +4419,11 @@ LRESULT CMainFrame::OnFilePostOpenmedia(WPARAM wParam, LPARAM lParam)
         ZoomVideoWindow(ZOOM_DEFAULT_LEVEL, go_fullscreen);
     }
 
+    // Save window rect only when MPC-HC is going fullscreen automatically after opening media.
+    // For manual Enter/Ctrl+Enter fullscreen, rect must be saved right before entering fullscreen.
     if (go_fullscreen) {
+        m_bVideoOpenWindowRectValid = false;
+        SaveVideoOpenWindowRect();
         OnViewFullscreen();
     }
 

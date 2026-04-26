@@ -91,7 +91,7 @@ IF /I "%CLEAN%" == "LAVFilters" IF "%NO_LAV%" == "True"  GOTO UnsupportedSwitch
 
 IF NOT EXIST "%MPCHC_VS_PATH%" CALL "%COMMON%" :SubVSPath
 IF NOT EXIST "!MPCHC_VS_PATH!" GOTO MissingVar
-SET "TOOLSET=!MPCHC_VS_PATH!\Common7\Tools\vsdevcmd"
+SET "TOOLSET=!MPCHC_VS_PATH!\VC\Auxiliary\Build\vcvarsall.bat"
 SET "BIN_DIR=bin"
 IF NOT EXIST "%TOOLSET%" GOTO MissingVar
 
@@ -110,7 +110,7 @@ IF NOT EXIST "%LOG_DIR%" MD "%LOG_DIR%"
 
 IF DEFINED MPCHC_LITE SET "BUILDCFG=%BUILDCFG% Lite"
 
-SET "MSBUILD_SWITCHES=/nologo /consoleloggerparameters:Verbosity=minimal /maxcpucount /nodeReuse:true"
+SET "MSBUILD_SWITCHES=/nologo /consoleloggerparameters:Verbosity=minimal /maxcpucount:1 /nodeReuse:false /p:PlatformToolset=v143 /p:VCToolsVersion=14.41.34120"
 
 SET START_TIME=%TIME%
 SET START_DATE=%DATE%
@@ -141,8 +141,11 @@ IF /I "%PPLATFORM%" == "x64" (
 IF /I "%CLEAN%" == "LAVFilters" CALL "src\thirdparty\LAVFilters\build_lavfilters.bat" Clean %PPLATFORM% %BUILDCFG% %COMPILER%
 IF %ERRORLEVEL% NEQ 0 ENDLOCAL & EXIT /B
 
-IF /I "%PPLATFORM%" == "Win32" (SET ARCH=x86) ELSE (SET ARCH=amd64)
-CALL "%TOOLSET%" -no_logo -arch=%ARCH% -winsdk=%MPCHC_WINSDK_VER%
+IF /I "%PPLATFORM%" == "Win32" (
+  CALL "%TOOLSET%" x86 %MPCHC_WINSDK_VER% -vcvars_ver=14.41
+) ELSE (
+  CALL "%TOOLSET%" x64 %MPCHC_WINSDK_VER% -vcvars_ver=14.41
+)
 IF %ERRORLEVEL% NEQ 0 GOTO MissingVar
 
 IF /I "%CONFIG%" == "Filters" (

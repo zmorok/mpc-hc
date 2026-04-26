@@ -102,13 +102,7 @@
     <ClCompile Include="libxml2\HTMLtree.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="libxml2\legacy.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="libxml2\list.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="libxml2\nanoftp.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="libxml2\nanohttp.c">
@@ -124,9 +118,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="libxml2\relaxng.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="libxml2\SAX.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="libxml2\SAX2.c">
@@ -176,9 +167,6 @@
     <ClInclude Include="libxml\xmlversion.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="libxml2\include\libxml\nanoftp.h">
-      <Filter>Header Files\include\libxml2</Filter>
-    </ClInclude>
     <ClInclude Include="libxml2\include\libxml\nanohttp.h">
       <Filter>Header Files\include\libxml2</Filter>
     </ClInclude>
@@ -192,9 +180,6 @@
       <Filter>Header Files\include\libxml2</Filter>
     </ClInclude>
     <ClInclude Include="libxml2\include\libxml\relaxng.h">
-      <Filter>Header Files\include\libxml2</Filter>
-    </ClInclude>
-    <ClInclude Include="libxml2\include\libxml\SAX.h">
       <Filter>Header Files\include\libxml2</Filter>
     </ClInclude>
     <ClInclude Include="libxml2\include\libxml\SAX2.h">

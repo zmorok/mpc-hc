@@ -331,9 +331,6 @@
     <ClCompile Include="liblzma\src\liblzma\common\filter_encoder.c">
       <Filter>Source Files\liblzma\common</Filter>
     </ClCompile>
-    <ClCompile Include="liblzma\src\liblzma\check\crc64_table.c">
-      <Filter>Source Files\liblzma\check</Filter>
-    </ClCompile>
     <ClCompile Include="liblzma\src\liblzma\check\sha256.c">
       <Filter>Source Files\liblzma\check</Filter>
     </ClCompile>
@@ -341,9 +338,6 @@
       <Filter>Source Files\liblzma\check</Filter>
     </ClCompile>
     <ClCompile Include="liblzma\src\liblzma\check\crc32_fast.c">
-      <Filter>Source Files\liblzma\check</Filter>
-    </ClCompile>
-    <ClCompile Include="liblzma\src\liblzma\check\crc32_table.c">
       <Filter>Source Files\liblzma\check</Filter>
     </ClCompile>
     <ClCompile Include="liblzma\src\liblzma\check\crc64_fast.c">
@@ -433,5 +427,8 @@
     <ClCompile Include="liblzma\src\common\tuklib_cpucores.c">
       <Filter>Source Files\common</Filter>
     </ClCompile>
+    <ClCompile Include="liblzma\src\liblzma\common\file_info.c" />
+    <ClCompile Include="liblzma\src\liblzma\common\lzip_decoder.c" />
+    <ClCompile Include="liblzma\src\liblzma\simple\arm64.c" />
   </ItemGroup>
 </Project>

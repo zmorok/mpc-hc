@@ -310,9 +310,6 @@
     <ClInclude Include="rs16.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="savepos.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="scantree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
