@@ -22,6 +22,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{981574AE-5A5E-4F27-BDF1-1B841E374CFF}</ProjectGuid>
     <ProjectName>BuildConfig</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <Import Project="..\src\platform.props" />

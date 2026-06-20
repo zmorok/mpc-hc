@@ -133,6 +133,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libfontconfig", "src\thirdp
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libharfbuzz", "src\thirdparty\harfbuzz\libharfbuzz.vcxproj", "{9DB795B7-E8BD-4846-82A5-C6D2577B1AAF}"
+	ProjectSection(ProjectDependencies) = postProject
+		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B} = {78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libass", "src\thirdparty\libass\libass.vcxproj", "{19677DFD-C020-434D-9CB1-D0F105E72770}"
 	ProjectSection(ProjectDependencies) = postProject

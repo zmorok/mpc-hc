@@ -49,6 +49,16 @@ copy_libs() {
       file_pdb=$(basename $file .dll).pdb
       ${CV2PDB} -p${file_pdb} ${file} ${FFMPEG_DLL_PATH}/${file_basename}
     done
+
+    runtime_dir=$(dirname "$(command -v gcc)")
+    for file in zlib1.dll libgcc_s_seh-1.dll libwinpthread-1.dll; do
+      if [ ! -f "${runtime_dir}/${file}" ]; then
+        echo "ERROR: ${file} not found in ${runtime_dir}"
+        exit 1
+      fi
+
+      cp -u "${runtime_dir}/${file}" "${FFMPEG_DLL_PATH}/"
+    done
   else
     cp lib*/*-lav-*.dll ${FFMPEG_DLL_PATH}
   fi
@@ -124,7 +134,7 @@ configure() {
       EXTRA_LDFLAGS="${EXTRA_LDFLAGS} -LIBPATH:../../../thirdparty/64/lib -LIBPATH:../../../../../../../bin/lib/Debug_x64 -NODEFAULTLIB:libcmt"
       TOOLCHAIN="--toolchain=msvc"
     else
-      OPTIONS="${OPTIONS} --enable-cross-compile --cross-prefix=${cross_prefix} --target-os=mingw32 --pkg-config=pkg-config"
+      OPTIONS="${OPTIONS} --enable-cross-compile --cross-prefix=${cross_prefix} --ar=ar --nm=nm --windres=windres --target-os=mingw32 --pkg-config=pkg-config"
       EXTRA_CFLAGS="-fno-tree-vectorize -D_WIN32_WINNT=0x0601 -DWINVER=0x0601 -gdwarf-5 -fno-omit-frame-pointer"
       EXTRA_CFLAGS="${EXTRA_CFLAGS} -I../../../thirdparty/64/include"
       EXTRA_LDFLAGS="${EXTRA_LDFLAGS} -L../../../thirdparty/64/lib"

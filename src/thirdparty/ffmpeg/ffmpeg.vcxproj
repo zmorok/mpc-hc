@@ -40,6 +40,7 @@
     <RootNamespace>ffmpeg</RootNamespace>
     <Keyword>ffmpeg</Keyword>
     <ProjectName>ffmpeg</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <Import Project="$(SolutionDir)src\platform.props" />

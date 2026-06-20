@@ -1,0 +1,86 @@
+MPC-HC build commands (CMD)
+===========================
+
+Run these commands from the repository root:
+
+  D:\Programming\mpc-hc
+
+
+Environment setup for the current CMD session
+---------------------------------------------
+
+set "PATH=%PATH%;C:\MSYS64\usr\bin;C:\MSYS64\bin;C:\MSYS64\mingw64\bin"
+set "InnoSetupPath=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+
+1. Quick Debug build: x64 player only, without LAV Filters
+----------------------------------------------------------
+
+build.bat Build x64 MPCHC Debug Lite
+
+Output:
+  bin\mpc-hc_x64_Debug Lite\mpc-hc64.exe
+
+
+2. Release build: runnable x64 player with LAV Filters
+-----------------------------------------------------
+
+build.bat Build x64 MPCHC Release LAVFilters
+
+Output:
+  bin\mpc-hc_x64\mpc-hc64.exe
+
+
+3. Release installer (.exe)
+---------------------------
+
+build.bat Build x64 MPCHC Release LAVFilters Installer
+
+Output:
+  bin\MPC-HC*.x64.exe
+
+
+4. Portable Release archive (.7z)
+---------------------------------
+
+build.bat Build x64 MPCHC Release LAVFilters 7z
+
+Output:
+  bin\MPC-HC*.x64.7z
+
+
+5. Release packages: runnable player, installer and portable archive
+--------------------------------------------------------------------
+
+build.bat Build x64 MPCHC Release LAVFilters Packages
+
+Outputs:
+  bin\mpc-hc_x64\mpc-hc64.exe
+  bin\MPC-HC*.x64.exe
+  bin\MPC-HC*.x64.7z
+
+
+6. Full Release build: player, LAV Filters, standalone filters,
+   installer and portable archives
+---------------------------------------------------------------
+
+build.bat Build x64 All Release LAVFilters Packages
+
+
+7. Completely clean full build from scratch
+---------------------------------------------
+
+rmdir /S /Q bin
+build.bat Build x64 All Release LAVFilters Packages
+
+
+Notes
+-----
+
+- Use "LAVFilters" after deleting bin so that internal codecs and FFmpeg
+  are rebuilt and included in the player packages.
+- Do not combine "Rebuild" with "LAVFilters"; build.bat rejects that
+  combination. Delete bin and use "Build ... LAVFilters" instead.
+- Use "Both" instead of "x64" to build x86 and x64 versions.
+- LAVFilters64 in the portable package must contain zlib1.dll,
+  libgcc_s_seh-1.dll and libwinpthread-1.dll.
