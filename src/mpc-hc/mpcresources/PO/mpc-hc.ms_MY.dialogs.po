@@ -648,10 +648,6 @@ msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr ""
 "Sembunyi-sendiri penuding tetikus ketika main balik dalam mod bertetingkap"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Papar maklumat \"Kini Dimainkan\" dalam mesej mood Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Benarkan sokongan LCD Logitech (eksperimental)"

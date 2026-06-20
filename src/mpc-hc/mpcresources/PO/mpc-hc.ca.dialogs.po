@@ -656,12 +656,6 @@ msgstr ""
 "Amaga automàticament el punter del ratolí durant la reproducció en mode "
 "finestra"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr ""
-"Mostra el títol del que s'estigui reproduïnt al missatge d'estat d'ànim de "
-"l'Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr ""

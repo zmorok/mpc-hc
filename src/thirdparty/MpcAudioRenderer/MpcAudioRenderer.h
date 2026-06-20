@@ -100,10 +100,13 @@ public:
 
 	bool m_bReleased             = false;
 	HANDLE m_hReleaseTimerHandle = nullptr;
+	ULONGLONG m_tcIdleTimerCreate = 0LL;
 
 	void StartReleaseTimer();
 	void EndReleaseTimer();
 	void ReleaseDevice();
+
+	FILTER_STATE GetFilterState() { return m_filterState; }
 
 	DECLARE_IUNKNOWN
 
@@ -188,6 +191,8 @@ public:
 	STDMETHODIMP_(BOOL)           GetCrossFeed() override;
 	STDMETHODIMP                  SetDummyChannels(BOOL bValue) override;
 	STDMETHODIMP_(BOOL)           GetDummyChannels() override;
+	STDMETHODIMP                  SetPauseKeepActive(BOOL bValue) override;
+	STDMETHODIMP_(BOOL)           GetPauseKeepActive() override;
 
 	// CMpcAudioRenderer
 private:
@@ -228,8 +233,10 @@ private:
 	bool CopyWaveFormat(const WAVEFORMATEX *pSrcWaveFormatEx, WAVEFORMATEX **ppDestWaveFormatEx);
 
 	bool    IsBitstream(const WAVEFORMATEX *pWaveFormatEx) const;
+	bool    CreateSupportedFormatList();
 	HRESULT SelectFormat(const WAVEFORMATEX* pwfx, WAVEFORMATEXTENSIBLE& wfex);
-	void    CreateFormat(WAVEFORMATEXTENSIBLE& wfex, WORD wBitsPerSample, WORD nChannels, DWORD dwChannelMask, DWORD nSamplesPerSec, WORD wValidBitsPerSample = 0);
+	void    CreateFormat(WAVEFORMATEXTENSIBLE& wfex,
+						 WORD wBitsPerSample, WORD nChannels, DWORD dwChannelMask, DWORD nSamplesPerSec, WORD wValidBitsPerSample = 0) const;
 
 	HRESULT StartAudioClient();
 
@@ -239,6 +246,7 @@ private:
 	HRESULT RenderWasapiBuffer();
 	void    CheckBufferStatus();
 	void    WasapiFlush();
+	void    FillPauseWhiteNoise(BYTE* pData, UINT32 nBytes);
 
 	// WASAPI variables
 	HMODULE            m_hAvrtLib;
@@ -256,6 +264,7 @@ private:
 	UINT32             m_nFramesInBuffer;
 	size_t             m_nMaxWasapiQueueSize;
 	bool               m_bIsAudioClientStarted;
+	bool               m_bPendingAudioClientChange;
 	BOOL               m_bIsBitstream;
 	BITSTREAM_MODE     m_BitstreamMode;
 	BOOL               m_bUseBitExactOutput;
@@ -264,6 +273,8 @@ private:
 	BOOL               m_bReleaseDeviceIdle;
 	BOOL               m_bUseCrossFeed;
 	BOOL               m_bDummyChannels;
+	BOOL               m_bPauseKeepActive;
+	uint32_t           m_nWhiteNoiseSeed;
 	FILTER_STATE       m_filterState;
 
 	CComPtr<IMMDeviceEnumerator> m_pMMDeviceEnumerator;
@@ -302,7 +313,8 @@ private:
 	std::vector<WORD>   m_nChannelsList;
 	std::vector<DWORD>  m_dwChannelMaskList;
 
-	BOOL                m_bReal32bitSupport;
+	bool                m_bReal32bitSupport;
+	bool                m_bReal32bitSupportChecked;
 
 	struct AudioParams {
 		WORD  wBitsPerSample;

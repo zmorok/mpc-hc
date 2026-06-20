@@ -542,35 +542,41 @@ void CMPCThemeMenu::GetStrings(MenuObject* mo, CString& left, CString& right)
 
 void CMPCThemeMenu::MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct)
 {
-    initDimensions(); //should happen before drawitem
-    CAutoLock cAutoLock(&resourceLock); //make sure our resources are protected
+    if (lpMeasureItemStruct && lpMeasureItemStruct->CtlType == ODT_MENU) {
+        initDimensions(); //should happen before drawitem
+        CAutoLock cAutoLock(&resourceLock); //make sure our resources are protected
 
-    HWND mainWnd = AfxGetMainWnd()->GetSafeHwnd();
-    HDC hDC = ::GetDC(mainWnd);
-    MenuObject* mo = (MenuObject*)lpMeasureItemStruct->itemData;
+        MenuObject* mo = (MenuObject*)lpMeasureItemStruct->itemData;
 
-    if (mo->isSeparator) {
-        lpMeasureItemStruct->itemWidth = 0;
-        lpMeasureItemStruct->itemHeight = separatorHeight;
-    } else if (hDC) {
-        CSize height = CMPCThemeUtil::GetTextSize(_T("W"), hDC, &font);
-        if (mo->isMenubar) {
-            CSize cs = CMPCThemeUtil::GetTextSize(mo->m_strCaption, hDC, &font);
-            lpMeasureItemStruct->itemWidth = cs.cx;
-            lpMeasureItemStruct->itemHeight = height.cy + rowPadding;
+        if (mo->isSeparator) {
+            lpMeasureItemStruct->itemWidth = 0;
+            lpMeasureItemStruct->itemHeight = separatorHeight;
         } else {
-            CString left, right;
-            GetStrings(mo, left, right);
-            CSize cs = CMPCThemeUtil::GetTextSize(left, hDC, &font);
-            lpMeasureItemStruct->itemHeight = height.cy + rowPadding;
-            lpMeasureItemStruct->itemWidth = iconSpacing + postTextSpacing + subMenuPadding + cs.cx;
-            if (right.GetLength() > 0) {
-                CSize csAccel = CMPCThemeUtil::GetTextSize(right, hDC, &font);
-                lpMeasureItemStruct->itemWidth += accelSpacing + csAccel.cx;
+            HWND mainWnd = AfxGetMainWnd()->GetSafeHwnd();
+            HDC hDC = ::GetDC(mainWnd);
+            if (hDC) {
+                CSize height = CMPCThemeUtil::GetTextSize(_T("W"), hDC, &font);
+                if (mo->isMenubar) {
+                    CSize cs = CMPCThemeUtil::GetTextSize(mo->m_strCaption, hDC, &font);
+                    lpMeasureItemStruct->itemWidth = cs.cx;
+                    lpMeasureItemStruct->itemHeight = height.cy + rowPadding;
+                } else {
+                    CString left, right;
+                    GetStrings(mo, left, right);
+                    CSize cs = CMPCThemeUtil::GetTextSize(left, hDC, &font);
+                    lpMeasureItemStruct->itemHeight = height.cy + rowPadding;
+                    lpMeasureItemStruct->itemWidth = iconSpacing + postTextSpacing + subMenuPadding + cs.cx;
+                    if (right.GetLength() > 0) {
+                        CSize csAccel = CMPCThemeUtil::GetTextSize(right, hDC, &font);
+                        lpMeasureItemStruct->itemWidth += accelSpacing + csAccel.cx;
+                    }
+                }
+                ::ReleaseDC(mainWnd, hDC);
             }
         }
+    } else {
+        ASSERT(false);
     }
-    ::ReleaseDC(mainWnd, hDC);
 }
 
 CMPCThemeMenu* CMPCThemeMenu::GetSubMenu(int nPos)

@@ -699,8 +699,12 @@ STDMETHODIMP CStreamSwitcherInputPin::ReceiveConnection(IPin* pConnector, const 
     // FIXME: this locked up once
     //    CAutoLock cAutoLock(&((CStreamSwitcherFilter*)m_pFilter)->m_csReceive);
 
-    HRESULT hr;
-    if (S_OK != (hr = QueryAcceptDownstream(pmt))) {
+    if (!pmt || pmt->majortype != MEDIATYPE_Audio) {
+        return VFW_E_TYPE_NOT_ACCEPTED;
+    }
+
+    HRESULT hr = QueryAcceptDownstream(pmt);
+    if (S_OK != hr) {
         return VFW_E_TYPE_NOT_ACCEPTED;
     }
 

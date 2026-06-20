@@ -1180,6 +1180,11 @@ BYTE* CVobSubFile::GetPacket(size_t idx, size_t& packetSize, size_t& dataSize, s
         packetSize = (buff[buff[0x16] + 0x18] << 8) + buff[buff[0x16] + 0x19];
         dataSize = (buff[buff[0x16] + 0x1a] << 8) + buff[buff[0x16] + 0x1b];
 
+        if (dataSize + 4 > packetSize) {
+            ASSERT(false);
+            break;
+        }
+
         try {
             ret = DEBUG_NEW BYTE[packetSize];
         } catch (CMemoryException* e) {

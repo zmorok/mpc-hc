@@ -157,7 +157,6 @@ public:
     void InsertOtherInternalSourcefilters(bool IsPreview = false);
     void InsertSubtitleFilters(bool IsPreview = false);
     void InsertBlockedFilters();
-    void InsertBroadcomDecoder();
 
 public:
 	CFGManagerCustom(LPCWSTR pClassName, LPCWSTR pInputFileURL, HWND hWnd = 0, bool IsPreview = false);

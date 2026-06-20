@@ -56,7 +56,6 @@
 
 class CDebugShadersDlg;
 class CFullscreenWnd;
-class SkypeMoodMsgHandler;
 struct DisplayMode;
 enum MpcCaptionState;
 class CMediaTypesDlg;
@@ -502,9 +501,6 @@ private:
     CString m_currentCoverPath;
     bool currentCoverIsFileArt = false;
 
-    CAutoPtr<SkypeMoodMsgHandler> m_pSkypeMoodMsgHandler;
-    void SendNowPlayingToSkype();
-
     volatile MLS m_eMediaLoadState;
     OAFilterState m_CachedFilterState;
 
@@ -875,8 +871,6 @@ public:
     afx_msg LRESULT OnTaskBarRestart(WPARAM, LPARAM);
     afx_msg LRESULT OnNotifyIcon(WPARAM, LPARAM);
     afx_msg LRESULT OnTaskBarThumbnailsCreate(WPARAM, LPARAM);
-
-    afx_msg LRESULT OnSkypeAttach(WPARAM wParam, LPARAM lParam);
 
     afx_msg void OnSetFocus(CWnd* pOldWnd);
     afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
@@ -1324,7 +1318,6 @@ protected:
     CMenu* m_pActiveContextMenu;
     CMenu* m_pActiveSystemMenu;
 
-    void UpdateSkypeHandler();
     void UpdateSeekbarChapterBag();
     void UpdateAudioSwitcher();
 
@@ -1391,7 +1384,6 @@ public:
         UPDATE_VOLUME_STEP,
         UPDATE_LOGO,
         UPDATE_MEDIA_ART,
-        UPDATE_SKYPE,
         UPDATE_SEEKBAR_CHAPTERS,
         UPDATE_WINDOW_TITLE,
         UPDATE_AUDIO_SWITCHER,

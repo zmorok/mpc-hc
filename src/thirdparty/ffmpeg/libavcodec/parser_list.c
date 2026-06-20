@@ -1,2 +1,2 @@
-static const AVCodecParser * const parser_list[] = {
+static const FFCodecParser * const parser_list[] = {
     NULL };

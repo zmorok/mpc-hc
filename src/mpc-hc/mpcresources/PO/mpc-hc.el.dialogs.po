@@ -652,10 +652,6 @@ msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr ""
 "Αυτόματη απόκρυψη του ποντικιού κατά την αναπαραγωγή σε λειτουργία παραθύρου"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Αποστολή πληροφορίας \"Αναπαραγωγή τώρα\" σε μήνυμα διάθεσης του Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Ενεργοποίηση υποστήριξης Logitech LCD (πειραματικά)"

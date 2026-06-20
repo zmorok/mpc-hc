@@ -119,6 +119,7 @@ public:
     void LoadTrackData(ASS_Track* track, char* data, int size);
     void StylesChanged();
     void LoadASSFont();
+    bool RenderRelativeToWindow();
     CRect GetSPDRect(SubPicDesc& spd);
     POSITION GetStartPosition(REFERENCE_TIME rt, double fps);
     REFERENCE_TIME GetCurrent(POSITION pos);

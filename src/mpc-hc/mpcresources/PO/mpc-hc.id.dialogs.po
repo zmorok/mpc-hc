@@ -649,10 +649,6 @@ msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "Oto-sembunyi penunjuk tetikus sepanjang pemutaran di mode windowed"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Tampilkan informasi \"Diputar Sekarang\" dalam pesan mood Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Fungsikan dukungan LCD Logitech (eksperimental)"

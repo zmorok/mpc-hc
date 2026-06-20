@@ -495,7 +495,7 @@ STDMETHODIMP CSubPicAllocatorPresenterImpl::GetString(LPCSTR field, LPWSTR* valu
     } else if (!strcmp(field, "yuvMatrix")) {
         ret = L"None";
 
-        if (m_inputMediaType.IsValid() && m_inputMediaType.formattype == FORMAT_VideoInfo2) {
+        if (m_inputMediaType.IsValid() && m_inputMediaType.formattype == FORMAT_VideoInfo2 && m_inputMediaType.pbFormat) {
             VIDEOINFOHEADER2* pVIH2 = (VIDEOINFOHEADER2*)m_inputMediaType.pbFormat;
             PBITMAPINFOHEADER pBIH = &pVIH2->bmiHeader;
 

@@ -43,6 +43,8 @@ private:
     CString m_typeExt;
     HICON m_hIcon;
 
+    REFERENCE_TIME m_rtNow, m_rtDur;
+
     CRect m_time_rect;
     CMPCThemeMenu m_timerMenu;
 
@@ -67,6 +69,9 @@ public:
     void SetStatusTimer(CString str);
     void SetStatusTimer(REFERENCE_TIME rtNow, REFERENCE_TIME rtDur, bool fHighPrecision,
                         const GUID& timeFormat = TIME_FORMAT_MEDIA_TIME);
+
+    REFERENCE_TIME GetTimerCurPos();
+    REFERENCE_TIME GetTimerDuration();
 
     CString GetStatusTimer() const;
     CString GetStatusMessage() const;

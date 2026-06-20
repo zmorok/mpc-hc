@@ -292,7 +292,6 @@ BOOL CPPageTheme::OnApply()
 
     // There is no main frame when the option dialog is displayed stand-alone
     if (CMainFrame* pMainFrame = AfxGetMainFrame()) {
-        pMainFrame->UpdateControlState(CMainFrame::UPDATE_SKYPE);
         pMainFrame->UpdateControlState(CMainFrame::UPDATE_SEEKBAR_CHAPTERS);
     }
 

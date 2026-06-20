@@ -37,6 +37,8 @@ CPlayerStatusBar::CPlayerStatusBar(CMainFrame* pMainFrame)
     , m_time(pMainFrame->m_dpi, true, false)
     , m_bmid(0)
     , m_hIcon(0)
+    , m_rtNow(0LL)
+    , m_rtDur(0LL)
     , m_time_rect(-1, -1, -1, -1)
 {
     EventRouter::EventSelection fires;
@@ -273,6 +275,16 @@ CString CPlayerStatusBar::PreparePathStatusMessage(CPath path)
     return path;
 }
 
+REFERENCE_TIME CPlayerStatusBar::GetTimerCurPos()
+{
+    return m_rtNow;
+}
+
+REFERENCE_TIME CPlayerStatusBar::GetTimerDuration()
+{
+    return m_rtDur;
+}
+
 CString CPlayerStatusBar::GetStatusTimer() const
 {
     CString strResult;
@@ -298,6 +310,9 @@ void CPlayerStatusBar::SetStatusTimer(REFERENCE_TIME rtNow, REFERENCE_TIME rtDur
     CString str;
     CString posstr;
     const CAppSettings& s = AfxGetAppSettings();
+
+    m_rtNow = rtNow;
+    m_rtDur = rtDur;
 
     if (rtDur > 0) {
         REFERENCE_TIME rtRem = rtDur - rtNow;

@@ -4791,6 +4791,10 @@ msgid ""
 "a part of your selection being added to playlist."
 msgstr ""
 
+msgctxt "IDS_FILTER_RESET_SETTINGS"
+msgid "Reset"
+msgstr ""
+
 msgctxt "IDS_ARS_WASAPI_MODE"
 msgid "WASAPI mode:"
 msgstr ""
@@ -4803,12 +4807,20 @@ msgctxt "IDS_ARS_SHARED"
 msgid "Shared"
 msgstr ""
 
+msgctxt "IDS_ARS_WASAPI_METHOD"
+msgid "WASAPI method:"
+msgstr ""
+
 msgctxt "IDS_ARS_BITEXACT_OUTPUT"
 msgid "Allow bit-exact output"
 msgstr ""
 
 msgctxt "IDS_ARS_SYSTEM_LAYOUT_CHANNELS"
 msgid "Use system layout channels"
+msgstr ""
+
+msgctxt "IDS_ARS_ALT_CHECK_FORMAT"
+msgid "Alternative check of supported format"
 msgstr ""
 
 msgctxt "IDS_ARS_SOUND_DEVICE"
@@ -4823,12 +4835,12 @@ msgctxt "IDS_ARS_CROSSFEED"
 msgid "Enable stereo crossfeed (for headphones)"
 msgstr ""
 
-msgctxt "IDS_ARS_DEVICE_PERIOD"
-msgid "Device buffer:"
+msgctxt "IDS_ARS_DUMMY_CHANNELS"
+msgid "Don't fill channels when upmixing"
 msgstr ""
 
-msgctxt "IDS_ARS_ALT_CHECK_FORMAT"
-msgid "Do not check format support"
+msgctxt "IDS_ARS_DEVICE_PERIOD"
+msgid "Device buffer:"
 msgstr ""
 
 msgctxt "IDS_ARS_STATUS"
@@ -4860,15 +4872,15 @@ msgid "Sample rate:"
 msgstr ""
 
 msgctxt "IDS_ARS_CHANNELS"
-msgid "Channels:"
+msgid "Channels"
 msgstr ""
 
-msgctxt "IDS_ARS_WASAPI_METHOD"
-msgid "WASAPI method:"
+msgctxt "IDS_AG_DEFAULT"
+msgid "Default"
 msgstr ""
 
-msgctxt "IDS_ARS_DUMMY_CHANNELS"
-msgid "Don't fill channels when upmixing"
+msgctxt "IDS_ARS_PAUSE_KEEP_ACTIVE"
+msgid "Keep audio device active when paused"
 msgstr ""
 
 msgctxt "IDS_ARS_TIP_BITEXACT_OUTPUT"
@@ -4881,12 +4893,8 @@ msgctxt "IDS_ARS_TIP_ALT_CHECK_FORMAT"
 msgid "The renderer will try to initialize the device skipping some checks."
 msgstr ""
 
-msgctxt "IDS_FILTER_RESET_SETTINGS"
-msgid "Reset"
-msgstr ""
-
-msgctxt "IDS_AG_DEFAULT"
-msgid "Default"
+msgctxt "IDS_ARS_TIP_PAUSE_KEEP_ACTIVE"
+msgid "The renderer will send inaudible noise to the device."
 msgstr ""
 
 msgctxt "IDS_CMD_THUMBNAILS"

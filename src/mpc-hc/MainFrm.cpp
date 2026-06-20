@@ -56,7 +56,6 @@
 #include "CoverArt.h"
 #include "CrashReporter.h"
 #include "KeyProvider.h"
-#include "SkypeMoodMsgHandler.h"
 #include "Translations.h"
 #include "UpdateChecker.h"
 #include "WebServer.h"
@@ -263,8 +262,6 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_REGISTERED_MESSAGE(WM_NOTIFYICON, OnNotifyIcon)
 
     ON_REGISTERED_MESSAGE(s_uTBBC, OnTaskBarThumbnailsCreate)
-
-    ON_REGISTERED_MESSAGE(SkypeMoodMsgHandler::uSkypeControlAPIAttach, OnSkypeAttach)
 
     ON_WM_SETFOCUS()
     ON_WM_GETMINMAXINFO()
@@ -1155,8 +1152,6 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
     WTSRegisterSessionNotification();
 
-    UpdateSkypeHandler();
-
     m_popupMenu.fulfillThemeReqs();
     m_mainPopupMenu.fulfillThemeReqs();
 
@@ -1403,11 +1398,6 @@ LRESULT CMainFrame::OnNotifyIcon(WPARAM wParam, LPARAM lParam)
 LRESULT CMainFrame::OnTaskBarThumbnailsCreate(WPARAM, LPARAM)
 {
     return CreateThumbnailToolbar();
-}
-
-LRESULT CMainFrame::OnSkypeAttach(WPARAM wParam, LPARAM lParam)
-{
-    return m_pSkypeMoodMsgHandler ? m_pSkypeMoodMsgHandler->HandleAttach(wParam, lParam) : FALSE;
 }
 
 void CMainFrame::ShowTrayIcon(bool bShow)
@@ -2751,7 +2741,6 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
                     OpenSetupWindowTitle();
                 }
                 MediaTransportControlSetMedia();
-                SendNowPlayingToSkype();
                 SendNowPlayingToApi(false);
             }
 
@@ -2803,6 +2792,11 @@ LRESULT CMainFrame::OnDoStandby(WPARAM wParam, LPARAM lParam)
         CloseMedia(false);
     }
 
+    CAppSettings& s = AfxGetAppSettings(); 
+    if (s.nCLSwitches & CLSW_STANDBY) {
+        s.nCLSwitches ^= CLSW_STANDBY | CLSW_CLOSE;
+    }     
+    
     SetPrivilege(SE_SHUTDOWN_NAME);
     SetSystemPowerState(TRUE, FALSE);
 
@@ -2813,6 +2807,11 @@ LRESULT CMainFrame::OnDoHibernate(WPARAM wParam, LPARAM lParam)
 {
     if (GetLoadState() != MLS::CLOSED) {
         CloseMedia(false);
+    }
+
+    CAppSettings& s = AfxGetAppSettings();
+    if (s.nCLSwitches & CLSW_HIBERNATE) {
+        s.nCLSwitches ^= CLSW_HIBERNATE | CLSW_CLOSE;
     }
 
     SetPrivilege(SE_SHUTDOWN_NAME);
@@ -4064,7 +4063,7 @@ void CMainFrame::OnUpdatePlayerStatus(CCmdUI* pCmdUI)
     if (GetLoadState() == MLS::LOADING) {
         m_wndStatusBar.SetStatusMessage(StrRes(IDS_CONTROLS_OPENING));
         if (AfxGetAppSettings().bUseEnhancedTaskBar && m_pTaskbarList) {
-            m_pTaskbarList->SetProgressState(m_hWnd, TBPF_INDETERMINATE);
+            m_pTaskbarList->SetProgressState(m_hWnd, TBPF_NOPROGRESS);
         }
     } else if (GetLoadState() == MLS::LOADED) {
         if (!m_tempstatus_msg.IsEmpty()) {
@@ -4264,7 +4263,7 @@ void CMainFrame::OnUpdatePlayerStatus(CCmdUI* pCmdUI)
     } else if (GetLoadState() == MLS::CLOSING) {
         m_wndStatusBar.SetStatusMessage(StrRes(IDS_CONTROLS_CLOSING));
         if (AfxGetAppSettings().bUseEnhancedTaskBar && m_pTaskbarList) {
-            m_pTaskbarList->SetProgressState(m_hWnd, TBPF_INDETERMINATE);
+            m_pTaskbarList->SetProgressState(m_hWnd, TBPF_NOPROGRESS);
         }
     } else {
         m_wndStatusBar.SetStatusMessage(m_closingmsg);
@@ -4320,7 +4319,11 @@ LRESULT CMainFrame::OnFilePostOpenmedia(WPARAM wParam, LPARAM lParam)
 
     // set shader selection
     if (m_pCAP || m_pCAP2) {
-        SetShaders(m_bToggleShader, m_bToggleShaderScreenSpace);
+        bool pre = m_bToggleShader && s.m_Shaders.GetCurrentPreset().GetPreResize().size() > 0;
+        bool post = m_bToggleShaderScreenSpace && s.m_Shaders.GetCurrentPreset().GetPostResize().size() > 0;
+        if (pre || post) {
+            SetShaders(pre, post);
+        }
     }
 
     // load keyframes for fast-seek
@@ -4478,7 +4481,6 @@ LRESULT CMainFrame::OnFilePostOpenmedia(WPARAM wParam, LPARAM lParam)
 
     // notify listeners
     if (GetPlaybackMode() != PM_DIGITAL_CAPTURE) {
-        SendNowPlayingToSkype();
         SendNowPlayingToApi();
     }
 
@@ -4665,8 +4667,6 @@ void CMainFrame::OnFilePostClosemedia(bool bNextIsQueued/* = false*/)
     //}
 
     SetAlwaysOnTop(s.iOnTop);
-
-    SendNowPlayingToSkype();
 
     // try to release external objects
     UnloadUnusedExternalObjects();
@@ -5137,9 +5137,7 @@ BOOL CMainFrame::OnCopyData(CWnd* pWnd, COPYDATASTRUCT* pCDS)
         PLAYER_LOG(_T("CMainFrame::OnCopyData"));
     }
 
-    if (m_pSkypeMoodMsgHandler && m_pSkypeMoodMsgHandler->HandleMessage(pWnd->GetSafeHwnd(), pCDS)) {
-        return TRUE;
-    } else if (pCDS->dwData != 0x6ABE51 || pCDS->cbData < sizeof(DWORD)) {
+    if (pCDS->dwData != 0x6ABE51 || pCDS->cbData < sizeof(DWORD)) {
         if (s.hMasterWnd) {
             ProcessAPICommand(pCDS);
             return TRUE;
@@ -5624,6 +5622,7 @@ bool CMainFrame::IsImageFileExt(CStringW ext) {
     return (
         ext == _T(".jpg") || ext == _T(".jpeg") || ext == _T(".png") || ext == _T(".gif") || ext == _T(".bmp")
         || ext == _T(".tiff") || ext == _T(".jpe") || ext == _T(".tga") || ext == _T(".heic") || ext == _T(".avif")
+        || ext == _T(".webp")
     );
 }
 
@@ -9175,25 +9174,32 @@ void CMainFrame::OnPlayPlay()
     if (IsStateLoaded()) {
         // If playback was previously stopped or ended, we need to reset the window size
         bool bVideoWndNeedReset = GetMediaState() == State_Stopped || m_fEndOfStream;
+        bool still_image = !m_bFirstPlay && !m_fAudioOnly && !m_wndSeekBar.HasDuration() && m_wndStatusBar.GetTimerCurPos() == 0LL && GetPlaybackMode() == PM_FILE && IsImageFile(lastOpenFile);
 
         KillTimersStop();
 
         if (GetPlaybackMode() == PM_FILE) {
+            if (still_image) {
+                // images need to be reloaded
+                if (bVideoWndNeedReset) {
+                    OnFileReopen();
+                }
+                return;
+            }
+            if (!m_bFirstPlay && !m_fAudioOnly && m_wndSeekBar.HasDuration() && m_dwLastPause && s.iReloadAfterLongPause > 0) {
+                // after long pause reload video file to avoid playback issues on some systems (with buggy drivers)
+                if (GetTickCount64() - m_dwLastPause >= s.iReloadAfterLongPause * 60 * 1000ULL) {
+                    m_reloadFilename = lastOpenFile;
+                    m_rtReloadPos = m_fEndOfStream ? 0LL : m_wndSeekBar.GetPos();
+                    reloadABRepeat = abRepeat;
+                    m_iReloadAudioIdx = GetCurrentAudioTrackIdx();
+                    m_iReloadSubIdx = GetCurrentSubtitleTrackIdx();
+                    OnFileReopen();
+                    return;
+                }
+            }
             if (m_fEndOfStream) {
                 SendMessage(WM_COMMAND, ID_PLAY_STOP);
-            } else {
-                if (!m_fAudioOnly && m_dwLastPause && m_wndSeekBar.HasDuration() && s.iReloadAfterLongPause > 0) {
-                    // after long pause reload video file to avoid playback issues on some systems (with buggy drivers)
-                    if (GetTickCount64() - m_dwLastPause >= s.iReloadAfterLongPause * 60 * 1000ULL) {
-                        m_reloadFilename = lastOpenFile;
-                        m_rtReloadPos = m_wndSeekBar.GetPos();
-                        reloadABRepeat = abRepeat;
-                        m_iReloadAudioIdx = GetCurrentAudioTrackIdx();
-                        m_iReloadSubIdx = GetCurrentSubtitleTrackIdx();
-                        OnFileReopen();
-                        return;
-                    }
-                }
             }
             if (m_pMS) {
                 if (FAILED(m_pMS->SetRate(m_dSpeedRate))) {
@@ -9223,7 +9229,9 @@ void CMainFrame::OnPlayPlay()
         }
 
         if (m_fFrameSteppingActive) {
-            m_pFS->CancelStep();
+            if (m_pFS.p) {
+                m_pFS->CancelStep();
+            }
             m_fFrameSteppingActive = false;
             if (m_pBA) {
                 m_pBA->put_Volume(m_nVolumeBeforeFrameStepping);
@@ -12774,8 +12782,8 @@ void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVi
         int nCompensateForMenubar = m_bShowingFloatingMenubar && !IsD3DFullScreenMode() ? GetSystemMetrics(SM_CYMENU) : 0;
         windowRect.bottom += nCompensateForMenubar;
 
-        OAFilterState fs = GetMediaState();
-        if (fs != State_Stopped || bSetStoppedVideoRect || m_fShockwaveGraph) {
+        OAFilterState fs = UpdateCachedMediaState();
+        if (fs == State_Running || fs == State_Paused || bSetStoppedVideoRect || m_fShockwaveGraph) {
             const CSize szVideo = GetVideoSize();
 
             m_dLastVideoScaleFactor = std::min((double)windowRect.Size().cx / szVideo.cx,
@@ -12919,21 +12927,23 @@ void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVi
         windowRect.top -= nCompensateForMenubar;
         windowRect.bottom -= nCompensateForMenubar;
 
-        if (m_pCAP) {
-            m_pCAP->SetPosition(windowRect, videoRect);
-            UpdateSubtitleColorInfo();
-            UpdateSubtitleRenderingParameters();
-        } else  {
-            if (m_pBV) {
-                m_pBV->SetDefaultSourcePosition();
-                m_pBV->SetDestinationPosition(videoRect.left, videoRect.top, videoRect.Width(), videoRect.Height());
-            }
-            if (m_pVW) {
-                m_pVW->SetWindowPosition(windowRect.left, windowRect.top, windowRect.Width(), windowRect.Height());
-            }
+        if (fs != -1) {
+            if (m_pCAP) {
+                m_pCAP->SetPosition(windowRect, videoRect);
+                UpdateSubtitleColorInfo();
+                UpdateSubtitleRenderingParameters();
+            } else {
+                if (m_pBV) {
+                    m_pBV->SetDefaultSourcePosition();
+                    m_pBV->SetDestinationPosition(videoRect.left, videoRect.top, videoRect.Width(), videoRect.Height());
+                }
+                if (m_pVW) {
+                    m_pVW->SetWindowPosition(windowRect.left, windowRect.top, windowRect.Width(), windowRect.Height());
+                }
 
-            if (m_pMFVDC) {
-                m_pMFVDC->SetVideoPosition(nullptr, &windowRect);
+                if (m_pMFVDC) {
+                    m_pMFVDC->SetVideoPosition(nullptr, &windowRect);
+                }
             }
         }
 
@@ -13542,12 +13552,6 @@ void CMainFrame::SetShaders(bool bSetPreResize/* = true*/, bool bSetPostResize/*
         m_pCAP3->ClearPixelShaders(TARGET_SCREEN);
         int shadercount = 0;
         if (bSetPreResize) {
-            int preTarget;
-            if (s.iDSVideoRendererType == VIDRNDT_DS_MPCVR) { //for now MPC-VR does not support pre-size shaders
-                preTarget = TARGET_SCREEN;
-            } else {
-                preTarget = TARGET_FRAME;
-            }
             for (const auto& shader : s.m_Shaders.GetCurrentPreset().GetPreResize().ExpandMultiPassShaderList()) {
                 ShaderC* pShader = GetShader(shader.filePath, PShaderMode == 11);
                 if (pShader) {
@@ -13556,9 +13560,9 @@ void CMainFrame::SetShaders(bool bSetPreResize/* = true*/, bool bSetPostResize/*
                     label.Format(L"Shader%d", shadercount);
                     CStringA profile = pShader->profile;
                     CStringA srcdata = pShader->srcdata;
-                    if (FAILED(m_pCAP3->AddPixelShader(preTarget, label, profile, srcdata))) {
+                    if (FAILED(m_pCAP3->AddPixelShader(TARGET_FRAME, label, profile, srcdata))) {
                         preFailed = true;
-                        m_pCAP3->ClearPixelShaders(preTarget);
+                        m_pCAP3->ClearPixelShaders(TARGET_FRAME);
                         break;
                     }
                 }
@@ -15138,6 +15142,9 @@ CSize CMainFrame::OpenSetupGetVideoSize()
 void CMainFrame::OpenSetupVideo()
 {
     CAutoLock ga(&lockGraphAccess);
+#if DEBUG
+    ASSERT(lockGraphAccess.m_lockCount == 1);
+#endif
 
     CSize vs = OpenSetupGetVideoSize();
     if (m_fShockwaveGraph) {
@@ -16230,6 +16237,9 @@ bool CMainFrame::OpenMediaPrivate(CAutoPtr<OpenMediaData> pOMD)
                         if (m_pCAP2 || m_pCAP3) {
                             if (SUCCEEDED(pPB->Read(_T("rotation"), &var, nullptr)) && var.vt == VT_BSTR) {
                                 int rotatevalue = _wtoi(var.bstrVal);
+                                if (rotatevalue < 0) {
+                                    rotatevalue += 360;
+                                }
                                 if (rotatevalue == 90 || rotatevalue == 180 || rotatevalue == 270) {
                                     m_iDefRotation = rotatevalue;
                                     if (m_pCAP3) {
@@ -16673,61 +16683,6 @@ void CMainFrame::DoTunerScan(TunerScanData* pTSD)
             }
         }
     }
-}
-
-// Skype
-
-void CMainFrame::SendNowPlayingToSkype()
-{
-    if (!m_pSkypeMoodMsgHandler) {
-        return;
-    }
-
-    CString msg;
-
-    if (GetLoadState() == MLS::LOADED) {
-        CString title, author;
-
-        m_wndInfoBar.GetLine(StrRes(IDS_INFOBAR_TITLE), title);
-        m_wndInfoBar.GetLine(StrRes(IDS_INFOBAR_AUTHOR), author);
-
-        if (title.IsEmpty()) {
-            CPlaylistItem pli;
-            if (m_wndPlaylistBar.GetCur(pli, true)) {
-                CString label = !pli.m_label.IsEmpty() ? pli.m_label : pli.m_fns.GetHead();
-
-                if (GetPlaybackMode() == PM_FILE) {
-                    CString fn = label;
-                    if (!pli.m_bYoutubeDL && PathUtils::IsURL(fn)) {
-                        int i = fn.Find('?');
-                        if (i >= 0) {
-                            fn = fn.Left(i);
-                        }
-                    }
-                    CPath path(fn);
-                    path.StripPath();
-                    path.MakePretty();
-                    path.RemoveExtension();
-                    title = (LPCTSTR)path;
-                    author.Empty();
-                } else if (IsPlaybackCaptureMode()) {
-                    title = GetCaptureTitle();
-                    author.Empty();
-                } else if (GetPlaybackMode() == PM_DVD) {
-                    title = _T("DVD");
-                    author.Empty();
-                }
-            }
-        }
-
-        if (!author.IsEmpty()) {
-            msg.Format(_T("%s - %s"), author.GetString(), title.GetString());
-        } else {
-            msg = title;
-        }
-    }
-
-    m_pSkypeMoodMsgHandler->SendMoodMessage(msg);
 }
 
 // dynamic menus
@@ -18892,7 +18847,7 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
     m_nStepForwardCount = 0;
 
     // skip seeks when duration is unknown
-    if (!m_wndSeekBar.HasDuration()) {
+    if (!m_wndSeekBar.HasDuration() && (rtPos > 0LL || m_wndStatusBar.GetTimerCurPos() == 0LL)) {
         return;
     }
 
@@ -19178,6 +19133,26 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
 
     HRESULT hr;
 
+    if (fVPreview) {
+        m_OSD.Stop();
+
+        m_pMVRS.Release();
+        m_pMVRFG.Release();
+        m_pMVRSR.Release();
+        m_pMVTO.Release();
+
+        m_pCAP3.Release();
+        m_pCAP2.Release();
+        m_pCAP.Release();
+        m_pVMRWC.Release();
+        m_pVMRMC.Release();
+        m_pVMB.Release();
+        m_pMFVMB.Release();
+        m_pMFVP.Release();
+        m_pMFVDC.Release();
+        m_pQP.Release();
+    }
+
     m_pGB->NukeDownstream(m_pVidCap);
     m_pGB->NukeDownstream(m_pAudCap);
 
@@ -19229,22 +19204,6 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
         }
 
         if (fVidPrev) {
-            m_pMVRS.Release();
-            m_pMVRFG.Release();
-            m_pMVRSR.Release();
-
-            m_OSD.Stop();
-            m_pCAP3.Release();
-            m_pCAP2.Release();
-            m_pCAP.Release();
-            m_pVMRWC.Release();
-            m_pVMRMC.Release();
-            m_pVMB.Release();
-            m_pMFVMB.Release();
-            m_pMFVP.Release();
-            m_pMFVDC.Release();
-            m_pQP.Release();
-
             m_pGB->Render(pVidPrevPin);
 
             m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP), TRUE);
@@ -19271,8 +19230,6 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
             }
 
             if (s.fShowOSD || s.fShowDebugInfo) { // Force OSD on when the debug switch is used
-                m_OSD.Stop();
-
                 if (m_pMVTO) {
                     m_OSD.Start(m_pVideoWnd, m_pMVTO);
                 } else if (m_fFullScreen && !m_fAudioOnly && m_pCAP3) { // MPCVR
@@ -19563,7 +19520,6 @@ void CMainFrame::OpenMedia(CAutoPtr<OpenMediaData> pOMD)
             m_wndCaptureBar.m_capdlg.SetVideoInput(pDeviceData->vinput);
             m_wndCaptureBar.m_capdlg.SetVideoChannel(pDeviceData->vchannel);
             m_wndCaptureBar.m_capdlg.SetAudioInput(pDeviceData->ainput);
-            SendNowPlayingToSkype();
             return;
         }
     }
@@ -19955,6 +19911,10 @@ void CMainFrame::CloseMedia(bool bNextIsQueued/* = false*/, bool bPendingFileDel
             bool killprocess = true;
             bool processmsg = true;
             bool extendedwait = false;
+            bool app_closing = !this->IsWindowVisible();
+            if (app_closing) {
+                waitdur += 4000ULL;
+            }
             int pm = 0;
             while (processmsg) {
                 dwWait = MsgWaitForMultipleObjects(1, &handle, FALSE, (DWORD)std::min(waitdur, 1500ULL), QS_POSTMESSAGE | QS_SENDMESSAGE);
@@ -20012,7 +19972,7 @@ void CMainFrame::CloseMedia(bool bNextIsQueued/* = false*/, bool bPendingFileDel
                     if (tckill > cur) {
                         waitdur = tckill - cur;
                     } else {
-                        if (extendedwait || m_fFullScreen || s.hMasterWnd || hibernating) {
+                        if (extendedwait || m_fFullScreen || s.hMasterWnd || hibernating || app_closing) {
                             processmsg = false;
                         } else {
                             CString timeoutmsg;
@@ -20109,6 +20069,10 @@ void CMainFrame::CloseMedia(bool bNextIsQueued/* = false*/, bool bPendingFileDel
         bool killprocess = true;
         bool processmsg = true;
         bool extendedwait = false;
+        bool app_closing = !this->IsWindowVisible();
+        if (app_closing) {
+            waitdur += 4000ULL;
+        }
         int pm = 0;
         while (processmsg) {
             // This needs to at least wake for QS_SENDMESSAGE because otherwise graph won't terminate until this times out.
@@ -20174,7 +20138,7 @@ void CMainFrame::CloseMedia(bool bNextIsQueued/* = false*/, bool bPendingFileDel
                 if (tckill > cur) {
                     waitdur = tckill - cur;
                 } else {
-                    if (extendedwait || m_fFullScreen || s.hMasterWnd || hibernating) {
+                    if (extendedwait || m_fFullScreen || s.hMasterWnd || hibernating || app_closing) {
                         processmsg = false;
                     } else {
                         CString timeoutmsg;
@@ -20259,7 +20223,6 @@ void CMainFrame::StartTunerScan(CAutoPtr<TunerScanData> pTSD)
     m_wndNavigationBar.m_navdlg.SetChannelInfoAvailable(false);
     RecalcLayout();
     OpenSetupWindowTitle();
-    SendNowPlayingToSkype();
 
     if (m_pGraphThread && m_pGraphThread->m_hThread) {
         m_pGraphThread->PostThreadMessage(CGraphThread::TM_TUNER_SCAN, (WPARAM)0, (LPARAM)pTSD.Detach());
@@ -20446,9 +20409,7 @@ LRESULT CMainFrame::OnCurrentChannelInfoUpdated(WPARAM wParam, LPARAM lParam)
             m_OSD.DisplayMessage(OSD_TOPLEFT, sChannelInfo, 3500);
         }
 
-        // Update window title and skype status
         OpenSetupWindowTitle();
-        SendNowPlayingToSkype();
     } else {
         ASSERT(FALSE);
     }
@@ -22024,17 +21985,19 @@ bool CMainFrame::IsAeroSnapped()
 
 UINT CMainFrame::OnPowerBroadcast(UINT nPowerEvent, LPARAM nEventData)
 {
-    static BOOL bWasPausedBeforeSuspention;
+    static BOOL bWasPausedBeforeSuspention = FALSE;
 
-    if (USE_LOGGER(AfxGetAppSettings())) {
+    const CAppSettings& s = AfxGetAppSettings();
+    if (USE_LOGGER(s)) {
         PLAYER_LOG(_T("CMainFrame::OnPowerBroadcast (%u)"), nPowerEvent);
         FLUSH_LOGGER();
     }
 
     switch (nPowerEvent) {
         case PBT_APMSUSPEND:            // System is suspending operation.
+        case PBT_APMSTANDBY:
             TRACE(_T("OnPowerBroadcast - suspending\n"));
-            bWasPausedBeforeSuspention = FALSE;
+            bWasPausedBeforeSuspention = FALSE;   
 
             if (GetLoadState() == MLS::LOADED) {
                 if (AfxGetAppSettings().iReloadAfterLongPause >= 0) {
@@ -22056,11 +22019,16 @@ UINT CMainFrame::OnPowerBroadcast(UINT nPowerEvent, LPARAM nEventData)
             }
             break;
         case PBT_APMRESUMESUSPEND:     // System is resuming operation
+        case PBT_APMRESUMESTANDBY:
             TRACE(_T("OnPowerBroadcast - resuming\n"));
 
-            // Resume if we paused before suspension.
-            if (bWasPausedBeforeSuspention) {
-                PostMessage(WM_COMMAND, ID_PLAY_PLAY);
+            if (s.nCLSwitches & CLSW_CLOSE) {
+                PostMessage(WM_CLOSE);
+            } else {
+                // Resume if we paused before suspension.
+                if (bWasPausedBeforeSuspention) {
+                    PostMessage(WM_COMMAND, ID_PLAY_PLAY);
+                }
             }
             break;
     }
@@ -22082,7 +22050,7 @@ void CMainFrame::OnSessionChange(UINT nSessionState, UINT nId)
         return;
     }
 
-    static BOOL bWasPausedBeforeSessionChange;
+    static BOOL bWasPausedBeforeSessionChange = FALSE;
 
     switch (nSessionState) {
         case WTS_SESSION_LOCK:
@@ -22123,17 +22091,6 @@ void CMainFrame::WTSUnRegisterSessionNotification()
 
     if (fnWtsUnRegisterSessionNotification) {
         fnWtsUnRegisterSessionNotification(m_hWnd);
-    }
-}
-
-void CMainFrame::UpdateSkypeHandler()
-{
-    const auto& s = AfxGetAppSettings();
-    if (s.bNotifySkype && !m_pSkypeMoodMsgHandler) {
-        m_pSkypeMoodMsgHandler.Attach(DEBUG_NEW SkypeMoodMsgHandler());
-        m_pSkypeMoodMsgHandler->Connect(m_hWnd);
-    } else if (!s.bNotifySkype && m_pSkypeMoodMsgHandler) {
-        m_pSkypeMoodMsgHandler.Free();
     }
 }
 
@@ -22244,9 +22201,6 @@ void CMainFrame::UpdateControlState(UpdateControlTarget target)
                 m_currentCoverAuthor.Empty();
                 ClearArtFromViews();
             }
-            break;
-        case UPDATE_SKYPE:
-            UpdateSkypeHandler();
             break;
         case UPDATE_SEEKBAR_CHAPTERS:
             UpdateSeekbarChapterBag();

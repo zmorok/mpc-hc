@@ -643,10 +643,6 @@ msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "ซ่อนเครื่องหมายของเม้าส์อัตโนมัติ ระหว่างเล่นในโหมดหน้าต่าง"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "แสดงข้อมูล \"กำลังเล่นตอนนี้\" ในข้อความแสดงอารมณ์ของ Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "ใช้งานการรองรับ Logitech LCD (ระยะทดลอง)"

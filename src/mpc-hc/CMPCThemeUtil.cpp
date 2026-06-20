@@ -1097,7 +1097,11 @@ bool CMPCThemeUtil::IsBasicMode()
     // Returns true if DWM composition is disabled (Windows 7 basic mode, not classic)
     BOOL bCompositionEnabled = FALSE;
     DwmIsCompositionEnabled(&bCompositionEnabled);
-    return !bCompositionEnabled && IsThemeActive();
+    if (!bCompositionEnabled) {
+        static BOOL tuIsThemeActive = IsThemeActive();
+        return tuIsThemeActive;
+    }
+    return false;
 }
 
 UINT CMPCThemeUtil::defaultLogo()

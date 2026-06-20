@@ -321,10 +321,20 @@ void CMouse::InternalOnLButtonDown(UINT nFlags, const CPoint& point)
     if ((!m_bD3DFS || !bIsOnFS) && (abs(GetMessageTime() - m_popupMenuUninitTime) < 2)) {
         return;
     }
-    if (m_pMainFrame->GetLoadState() == MLS::LOADED && m_pMainFrame->GetPlaybackMode() == PM_DVD &&
-            (m_pMainFrame->IsD3DFullScreenMode() ^ m_bD3DFS) == 0 &&
-            (m_pMainFrame->m_pDVDC->ActivateAtPosition(GetVideoPoint(point)) == S_OK)) {
-        return;
+    if (m_pMainFrame->GetLoadState() == MLS::LOADED && m_pMainFrame->GetPlaybackMode() == PM_DVD && (m_pMainFrame->IsD3DFullScreenMode() ^ m_bD3DFS) == 0) {
+        ULONG ulButtonTotal = 0;
+        ULONG ulButtonCurrent = 0;     
+        if (SUCCEEDED(m_pMainFrame->m_pDVDI->GetCurrentButton(&ulButtonTotal, &ulButtonCurrent)) && ulButtonTotal > 0) {
+            ULONG ulButtonMousePos = 0;
+            CPoint vp = GetVideoPoint(point);
+            if (SUCCEEDED(m_pMainFrame->m_pDVDI->GetButtonAtPosition(vp, &ulButtonMousePos))) {
+                if (SUCCEEDED(m_pMainFrame->m_pDVDC->SelectAndActivateButton(ulButtonMousePos))) {
+                    return;
+                }
+            }
+        } else {
+            ASSERT(false);
+        }
     }
     if (bIsOnFS && (m_bD3DFS || m_pMainFrame->IsFullScreenMainFrameExclusiveMPCVR()) && m_pMainFrame->m_OSD.OnLButtonDown(nFlags, point)) {
         return;
@@ -530,12 +540,21 @@ bool CMouse::SelectCursor(const CPoint& screenPoint, const CPoint& clientPoint, 
         return true;
     }
 
-    if (m_pMainFrame->GetLoadState() == MLS::LOADED && m_pMainFrame->GetPlaybackMode() == PM_DVD &&
-            (m_pMainFrame->IsD3DFullScreenMode() ^ m_bD3DFS) == 0 &&
-            (m_pMainFrame->m_pDVDC->SelectAtPosition(GetVideoPoint(clientPoint)) == S_OK)) {
-        StopMouseHider();
-        m_cursor = Cursor::HAND;
-        return true;
+    if (m_pMainFrame->GetLoadState() == MLS::LOADED && m_pMainFrame->GetPlaybackMode() == PM_DVD && (m_pMainFrame->IsD3DFullScreenMode() ^ m_bD3DFS) == 0) {
+        ULONG ulButtonTotal = 0;
+        ULONG ulButtonCurrent = 0;     
+        if (SUCCEEDED(m_pMainFrame->m_pDVDI->GetCurrentButton(&ulButtonTotal, &ulButtonCurrent)) && ulButtonTotal > 0) {
+            ULONG ulButtonMousePos = 0;
+            CPoint vp = GetVideoPoint(clientPoint);
+            if (SUCCEEDED(m_pMainFrame->m_pDVDI->GetButtonAtPosition(vp, &ulButtonMousePos))) {
+                StopMouseHider();
+                m_cursor = Cursor::HAND;
+                if (ulButtonMousePos != ulButtonCurrent) {
+                    m_pMainFrame->m_pDVDC->SelectButton(ulButtonMousePos);
+                }
+                return true;
+            }
+        }
     }
 
     bool bMouseButtonDown = !!(nFlags & ~(MK_CONTROL | MK_SHIFT));

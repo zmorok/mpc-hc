@@ -646,10 +646,6 @@ msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "Piilota kursori automaattisesti toistettaessa ikkunatilassa"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Näytä \"Nyt toistetaan\"-tiedot Skypen moodiviestissä"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Ota käyttöön Logitechin LCD-tuki (kokeellinen)"

@@ -1678,10 +1678,11 @@ static bool LoadFont(const CString& font)
             }
         }
 
-        AddFontResource(fn);
+        int count = AddFontResource(fn);
+        return count > 0;
+    } else {
+        return !hFont;
     }
-
-    return true;
 }
 
 static bool LoadUUEFont(CTextFile* file, CString firstfontname)

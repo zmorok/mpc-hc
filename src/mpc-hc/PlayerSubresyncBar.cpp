@@ -1573,5 +1573,11 @@ bool CPlayerSubresyncBar::ShiftSubtitle(int nItem, long lValue, REFERENCE_TIME& 
 
 bool CPlayerSubresyncBar::SaveToDisk()
 {
-    return m_sts.SaveAs(m_sts.m_path, m_sts.m_subtitleType);
+    bool ret = false;
+    try {
+        ret = m_sts.SaveAs(m_sts.m_path, m_sts.m_subtitleType);
+    } catch (...) {
+        ASSERT(false);
+    }
+    return ret;
 }

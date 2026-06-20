@@ -34,7 +34,6 @@ CPPageTweaks::CPPageTweaks()
     , m_nJumpDistS(0)
     , m_nJumpDistM(0)
     , m_nJumpDistL(0)
-    , m_fNotifySkype(TRUE)
     , m_fPreventMinimize(FALSE)
     , m_fUseSearchInFolder(FALSE)
     , m_bHideWindowedMousePointer(TRUE)
@@ -53,7 +52,6 @@ void CPPageTweaks::DoDataExchange(CDataExchange* pDX)
     DDX_Text(pDX, IDC_EDIT1, m_nJumpDistS);
     DDX_Text(pDX, IDC_EDIT2, m_nJumpDistM);
     DDX_Text(pDX, IDC_EDIT3, m_nJumpDistL);
-    DDX_Check(pDX, IDC_CHECK4, m_fNotifySkype);
     DDX_Check(pDX, IDC_CHECK6, m_fPreventMinimize);
     DDX_Check(pDX, IDC_CHECK7, m_fUseSearchInFolder);
     DDX_Control(pDX, IDC_COMBO4, m_FastSeekMethod);
@@ -73,7 +71,6 @@ BOOL CPPageTweaks::OnInitDialog()
     m_nJumpDistS = s.nJumpDistS;
     m_nJumpDistM = s.nJumpDistM;
     m_nJumpDistL = s.nJumpDistL;
-    m_fNotifySkype = s.bNotifySkype;
 
     m_fPreventMinimize = s.fPreventMinimize;
 
@@ -106,7 +103,6 @@ BOOL CPPageTweaks::OnApply()
     s.nJumpDistS = m_nJumpDistS;
     s.nJumpDistM = m_nJumpDistM;
     s.nJumpDistL = m_nJumpDistL;
-    s.bNotifySkype = !!m_fNotifySkype;
 
     s.fPreventMinimize = !!m_fPreventMinimize;
     s.fUseSearchInFolder = !!m_fUseSearchInFolder;

@@ -873,15 +873,26 @@ bool Rasterizer::Rasterize(int xsub, int ysub, int fBlur, double fGaussianBlur)
     m_pOverlayData->mOverlayHeight = ((height + 14) >> 3) + 1;
     m_pOverlayData->mOverlayPitch = (m_pOverlayData->mOverlayWidth + 15) & ~15; // Round the next multiple of 16
 
-    m_pOverlayData->mpOverlayBufferBody = (byte*)_aligned_malloc(m_pOverlayData->mOverlayPitch * m_pOverlayData->mOverlayHeight, 16);
-    m_pOverlayData->mpOverlayBufferBorder = (byte*)_aligned_malloc(m_pOverlayData->mOverlayPitch * m_pOverlayData->mOverlayHeight, 16);
-    if (!m_pOverlayData->mpOverlayBufferBody || !m_pOverlayData->mpOverlayBufferBorder) {
+    uint64_t buffersize = m_pOverlayData->mOverlayPitch * m_pOverlayData->mOverlayHeight;
+    if (buffersize > 134217728ULL) {
+        ASSERT(false);
+        return false;
+    }
+    m_pOverlayData->mpOverlayBufferBody = (byte*)_aligned_malloc(buffersize, 16);
+    if (!m_pOverlayData->mpOverlayBufferBody) {
+        m_pOverlayData = nullptr;
+        return false;
+    }
+    m_pOverlayData->mpOverlayBufferBorder = (byte*)_aligned_malloc(buffersize, 16);
+    if (!m_pOverlayData->mpOverlayBufferBorder) {
+        _aligned_free(m_pOverlayData->mpOverlayBufferBody);
+        m_pOverlayData->mpOverlayBufferBody = nullptr;
         m_pOverlayData = nullptr;
         return false;
     }
 
-    ZeroMemory(m_pOverlayData->mpOverlayBufferBody, m_pOverlayData->mOverlayPitch * m_pOverlayData->mOverlayHeight);
-    ZeroMemory(m_pOverlayData->mpOverlayBufferBorder, m_pOverlayData->mOverlayPitch * m_pOverlayData->mOverlayHeight);
+    ZeroMemory(m_pOverlayData->mpOverlayBufferBody, buffersize);
+    ZeroMemory(m_pOverlayData->mpOverlayBufferBorder, buffersize);
 
     // Are we doing a border?
 
@@ -1542,7 +1553,7 @@ namespace
                 __m128i d1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(dst));
                 __m128i d2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(dst + 16));
                 __m128i d3 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(dst + 32));
-                __m128i d4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(dst + 64));
+                __m128i d4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(dst + 48));
 
                 auto c_r_low = _mm256_castsi256_si128(c_r);
                 auto c_g_low = _mm256_castsi256_si128(c_g);

@@ -642,10 +642,6 @@ msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "Ինքնաթաքցնել մկնիկի նշորդը նվագարկելիս պատուհանի կերպում"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Ցուցադրել \"Այժմ խաղարկվում է\" տեղեկությունn Skype-ում"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Միացնել Logitech LCD-ի աջակցումը (փորձարկվում է)"

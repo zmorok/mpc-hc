@@ -211,6 +211,10 @@ int DpiHelper::CalculateListCtrlItemHeight(CListCtrl* wnd) {
     } else {
         TEXTMETRICW tm;
         CDC* cdc = wnd->GetDC();
+        if (!cdc) {
+            ASSERT(false);
+            return 1;
+        }
         cdc->SelectObject(wnd->GetFont());
         cdc->GetTextMetricsW(&tm);
 

@@ -38,7 +38,7 @@ class __declspec(uuid("1E53BA32-3BCC-4dff-9342-34E46BE3F5A5"))
 private :
 	CComQIPtr<IMpcAudioRendererFilter> m_pMAR;
 
-		DpiHelper m_dpi;
+	DpiHelper m_dpi;
 
 	AudioDevices::deviceList_t m_deviceList;
 
@@ -56,6 +56,7 @@ private :
 	CMPCThemeRadioOrCheck m_cbReleaseDeviceIdle;
 	CMPCThemeRadioOrCheck m_cbUseCrossFeed;
 	CMPCThemeRadioOrCheck m_cbDummyChannels;
+	CMPCThemeRadioOrCheck m_cbPauseKeepActive;
 	CMPCThemeButton       m_btnReset;
 
 	CMPCThemeStatic	  m_txtSoundDevice;
@@ -72,6 +73,7 @@ private :
 		IDC_PP_FREE_DEVICE_INACTIVE,
 		IDC_PP_USE_CROSSFEED,
 		IDC_PP_DUMMY_CHANNELS,
+		IDC_PP_PAUSE_KEEP_ACTIVE,
 		IDC_PP_RESET,
 	};
 
@@ -85,12 +87,14 @@ public:
 	bool OnApply();
 
 	static LPCWSTR GetWindowTitle() { return MAKEINTRESOURCEW(IDS_FILTER_SETTINGS_CAPTION); }
-	static CSize GetWindowSize() { return CSize(340, 211); }
+	static CSize GetWindowSize() { return CSize(340, 231); }
 
 	DECLARE_MESSAGE_MAP()
 
 	afx_msg void OnClickedWasapiMode();
 	afx_msg void OnClickedBitExact();
+	afx_msg void OnClickedFreeDeviceInactive();
+	afx_msg void OnClickedPauseKeepActive();
 	afx_msg void OnBnClickedReset();
 	afx_msg BOOL OnToolTipNotify(UINT id, NMHDR * pNMHDR, LRESULT * pResult);
 };

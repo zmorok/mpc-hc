@@ -862,11 +862,15 @@ void LibassContext::LoadASSFont() {
     }
 }
 
-CRect LibassContext::GetSPDRect(SubPicDesc& spd) {
-    CRect spdRect;
+bool LibassContext::RenderRelativeToWindow() {
     auto relativeTo = m_STS->m_SubRendererSettings.defaultStyle.relativeTo;
     CSimpleTextSubtitle::UpdateSubRelativeTo(m_STS->m_subtitleType, relativeTo);
-    if (relativeTo == STSStyle::WINDOW) {
+    return (relativeTo == STSStyle::WINDOW);
+}
+
+CRect LibassContext::GetSPDRect(SubPicDesc& spd) {
+    CRect spdRect;
+    if (RenderRelativeToWindow()) {
         spdRect = CRect(0, 0, spd.w, spd.h);
     } else {
         spdRect = CRect(spd.vidrect);
@@ -894,7 +898,7 @@ REFERENCE_TIME LibassContext::GetCurrent(POSITION pos) {
     return 0;
 }
 
-STDMETHODIMP LibassContext::Render(REFERENCE_TIME rt, SubPicDesc& spd, RECT& bbox, CSize& size, CRect& vidRect) {
+STDMETHODIMP LibassContext::Render(REFERENCE_TIME rt, SubPicDesc& spd, RECT& bbox, CSize& size, CRect& frameRect) {
     if (m_assloaded) {
         if (spd.bpp != 32) {
             ASSERT(FALSE);
@@ -903,12 +907,29 @@ STDMETHODIMP LibassContext::Render(REFERENCE_TIME rt, SubPicDesc& spd, RECT& bbo
 
         LoadASSFont();
 
-        vidRect = GetSPDRect(spd);
-        size = CSize(vidRect.Width(), vidRect.Height());
-        SetFrameSize(vidRect.Width(), vidRect.Height());
+        bool relToWin = RenderRelativeToWindow();
+        if (relToWin) {
+            frameRect = CRect(0, 0, spd.w, spd.h);
+        } else {
+            frameRect = CRect(spd.vidrect);
+        }
+        size = CSize(frameRect.Width(), frameRect.Height());
+        ASS_Renderer* renderer = m_renderer.get();
+        if (relToWin && (spd.vidrect.top > 0 || spd.h > spd.vidrect.bottom || spd.vidrect.left > 0 && spd.w > spd.vidrect.right)) {
+            // handle pan&scan outside visible area
+            int t = std::max(0, (int)spd.vidrect.top);
+            int b = std::max(0, spd.h - (int)spd.vidrect.bottom);
+            int l = std::max(0, (int)spd.vidrect.left);
+            int r = std::max(0, spd.w - (int)spd.vidrect.right);
+            ass_set_margins(renderer, t, b, l, r);
+            ass_set_use_margins(renderer, true);
+        } else {
+            ass_set_margins(renderer, 0, 0, 0, 0);
+            ass_set_use_margins(renderer, false);
+        }
+        SetFrameSize(size.cx, size.cy);
 
         CRect rcDirty;
-
         if (!RenderFrame(rt / 10000, spd, rcDirty)) {
             return E_FAIL;
         }

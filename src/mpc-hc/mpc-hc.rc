@@ -405,16 +405,14 @@ BEGIN
     PUSHBUTTON      "Default",IDC_BUTTON1,203,20,65,14
     CONTROL         "Auto-hide the mouse pointer during playback in windowed mode",IDC_CHECK3,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,47,343,16
-    CONTROL         "Display ""Now Playing"" information in Skype's mood message",IDC_CHECK4,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,67,343,16
     CONTROL         "Enable Logitech LCD support (experimental)",IDC_CHECK_LCD,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,87,343,16
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,67,343,16
     CONTROL         "Prevent minimizing the player when in fullscreen on a non default monitor",IDC_CHECK6,
-                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,6,107,343,16
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,6,87,343,16
     CONTROL         "Open previous/next file in folder on ""Skip back/forward"" when there is only one item in playlist",IDC_CHECK7,
-                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,6,127,343,16
-    CONTROL         "Fast seek (on keyframe)",IDC_FASTSEEK_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,151,194,8
-    COMBOBOX        IDC_COMBO4,203,151,146,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,6,107,343,16
+    CONTROL         "Fast seek (on keyframe)",IDC_FASTSEEK_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,131,194,8
+    COMBOBOX        IDC_COMBO4,203,131,146,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 END
 
 IDD_PPAGEEXTERNALFILTERS DIALOGEX 0, 0, 355, 289
@@ -4192,36 +4190,32 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_ARS_WASAPI_MODE     "WASAPI mode:"
-    IDS_ARS_EXCLUSIVE       "Exclusive"
-    IDS_ARS_SHARED          "Shared"
-    IDS_ARS_BITEXACT_OUTPUT "Allow bit-exact output"
+    IDS_FILTER_RESET_SETTINGS      "Reset"
+    IDS_ARS_WASAPI_MODE            "WASAPI mode:"
+    IDS_ARS_EXCLUSIVE              "Exclusive"
+    IDS_ARS_SHARED                 "Shared"
+    IDS_ARS_WASAPI_METHOD          "WASAPI method:"
+    IDS_ARS_BITEXACT_OUTPUT        "Allow bit-exact output"
     IDS_ARS_SYSTEM_LAYOUT_CHANNELS "Use system layout channels"
-    IDS_ARS_SOUND_DEVICE    "Sound Device:"
-    IDS_ARS_RELEASE_DEVICE_IDLE "Release device when idle"
-    IDS_ARS_CROSSFEED       "Enable stereo crossfeed (for headphones)"
-    IDS_ARS_DEVICE_PERIOD   "Device buffer:"
-    IDS_ARS_ALT_CHECK_FORMAT "Do not check format support"
-    IDS_ARS_STATUS          "Status"
-    IDS_ARS_DEVICE          "Device:"
-END
-
-STRINGTABLE
-BEGIN
-    IDS_ARS_MODE            "Mode:"
-    IDS_ARS_INPUT           "Input"
-    IDS_ARS_OUTPUT          "Output"
-    IDS_ARS_FORMAT          "Format:"
-    IDS_ARS_SAMPLERATE      "Sample rate:"
-    IDS_ARS_CHANNELS        "Channels:"
-    IDS_ARS_WASAPI_METHOD   "WASAPI method:"
-    IDS_ARS_DUMMY_CHANNELS  "Don't fill channels when upmixing"
-    IDS_ARS_TIP_BITEXACT_OUTPUT 
-                            "If possible, the audio will be sent out in its original format.\nOtherwise, the format specified in the system settings will be used."
-    IDS_ARS_TIP_ALT_CHECK_FORMAT 
-                            "The renderer will try to initialize the device skipping some checks."
-    IDS_FILTER_RESET_SETTINGS "Reset"
-    IDS_AG_DEFAULT          "Default"
+    IDS_ARS_ALT_CHECK_FORMAT       "Alternative check of supported format"
+    IDS_ARS_SOUND_DEVICE           "Sound Device:"
+    IDS_ARS_RELEASE_DEVICE_IDLE    "Release device when idle"
+    IDS_ARS_CROSSFEED              "Enable stereo crossfeed (for headphones)"
+    IDS_ARS_DUMMY_CHANNELS         "Don't fill channels when upmixing"
+    IDS_ARS_DEVICE_PERIOD          "Device buffer:"
+    IDS_ARS_STATUS                 "Status"
+    IDS_ARS_DEVICE                 "Device:"
+    IDS_ARS_MODE                   "Mode:"
+    IDS_ARS_INPUT                  "Input"
+    IDS_ARS_OUTPUT                 "Output"
+    IDS_ARS_FORMAT                 "Format:"
+    IDS_ARS_SAMPLERATE             "Sample rate:"
+    IDS_ARS_CHANNELS               "Channels"
+    IDS_AG_DEFAULT                 "Default"
+    IDS_ARS_PAUSE_KEEP_ACTIVE      "Keep audio device active when paused"
+    IDS_ARS_TIP_BITEXACT_OUTPUT    "If possible, the audio will be sent out in its original format.\nOtherwise, the format specified in the system settings will be used."
+    IDS_ARS_TIP_ALT_CHECK_FORMAT   "The renderer will try to initialize the device skipping some checks."
+    IDS_ARS_TIP_PAUSE_KEEP_ACTIVE  "The renderer will send inaudible noise to the device."
 END
 
 STRINGTABLE

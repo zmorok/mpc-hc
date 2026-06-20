@@ -8,7 +8,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: MPC-HC\n"
-"POT-Creation-Date: 2026-03-14 14:38:47+0000\n"
+"POT-Creation-Date: 2026-06-02 02:11:23+0000\n"
 "PO-Revision-Date: 2020-01-02 07:46+0000\n"
 "Last-Translator: Андрей Станков <astankov84@gmail.com>, 2026\n"
 "Language-Team: Bulgarian (https://app.transifex.com/mpchc/teams/106126/bg/)\n"
@@ -490,7 +490,7 @@ msgstr "В&ъзстанови"
 
 msgctxt "IDS_PLAYLIST_SORT"
 msgid "&Sort"
-msgstr ""
+msgstr "&Сортиране"
 
 msgctxt "IDS_SUBRESYNC_SEPARATOR"
 msgid "&Separator"
@@ -776,7 +776,7 @@ msgstr "Субтитри::Стил по подразбиране"
 
 msgctxt "IDD_PPAGEINTERNALFILTERS"
 msgid "Internal Filters::General"
-msgstr "Вътрешни филтри::Общи"
+msgstr "Вътрешни Филтри::Общи"
 
 msgctxt "IDD_PPAGELOGO"
 msgid "Player::Logo"
@@ -4417,7 +4417,7 @@ msgstr "/standby\t\tПоставя компютъра в режим стендб
 
 msgctxt "IDS_CMD_HIBERNATE"
 msgid "/hibernate\t\tHibernate operating system after playback"
-msgstr "/hibernate\t\tЗаспиване на компютъра след края на изпълнението"
+msgstr "/hibernate\tЗаспиване на компютъра след края на изпълнението"
 
 msgctxt "IDS_CMD_LOGOFF"
 msgid "/logoff\t\tLog off after playback"
@@ -4719,7 +4719,7 @@ msgstr "Упр. заместване на стил по подразбиране
 
 msgctxt "IDS_AG_TOGGLE_OVERRIDE_SUBTITLE_STYLES"
 msgid "Toggle Override All Styles"
-msgstr ""
+msgstr "Упр. заместване на всички стилове "
 
 msgctxt "IDS_PPAGEADVANCED_LOOP_FOLDER_NEXT_FILE"
 msgid "Loop back to first file in folder after playing the last file."
@@ -4912,6 +4912,10 @@ msgstr ""
 "правилното отваряне на селекция от файлове в Explorer. Прекалено ниска "
 "стойност може да предизвика частично зареждане на селекцията в плейлиста. "
 
+msgctxt "IDS_FILTER_RESET_SETTINGS"
+msgid "Reset"
+msgstr "Изчистване"
+
 msgctxt "IDS_ARS_WASAPI_MODE"
 msgid "WASAPI mode:"
 msgstr "WASAPI режим:"
@@ -4924,6 +4928,10 @@ msgctxt "IDS_ARS_SHARED"
 msgid "Shared"
 msgstr "Споделен"
 
+msgctxt "IDS_ARS_WASAPI_METHOD"
+msgid "WASAPI method:"
+msgstr "WASAPI метод:"
+
 msgctxt "IDS_ARS_BITEXACT_OUTPUT"
 msgid "Allow bit-exact output"
 msgstr "Позволяване на точен побитов изход"
@@ -4931,6 +4939,10 @@ msgstr "Позволяване на точен побитов изход"
 msgctxt "IDS_ARS_SYSTEM_LAYOUT_CHANNELS"
 msgid "Use system layout channels"
 msgstr "Използване на системна настройка на каналите"
+
+msgctxt "IDS_ARS_ALT_CHECK_FORMAT"
+msgid "Alternative check of supported format"
+msgstr "Алтернативна проверка за поддържан формат"
 
 msgctxt "IDS_ARS_SOUND_DEVICE"
 msgid "Sound Device:"
@@ -4944,13 +4956,13 @@ msgctxt "IDS_ARS_CROSSFEED"
 msgid "Enable stereo crossfeed (for headphones)"
 msgstr "Разрешаване на стерео crossfeed (за слушалки)"
 
+msgctxt "IDS_ARS_DUMMY_CHANNELS"
+msgid "Don't fill channels when upmixing"
+msgstr "Да не се запълват каналите при upmixing"
+
 msgctxt "IDS_ARS_DEVICE_PERIOD"
 msgid "Device buffer:"
 msgstr "Буфер на устройството:"
-
-msgctxt "IDS_ARS_ALT_CHECK_FORMAT"
-msgid "Do not check format support"
-msgstr "Да не се проверява  за поддръжка на формата"
 
 msgctxt "IDS_ARS_STATUS"
 msgid "Status"
@@ -4981,16 +4993,16 @@ msgid "Sample rate:"
 msgstr "Побитова скорост:"
 
 msgctxt "IDS_ARS_CHANNELS"
-msgid "Channels:"
-msgstr "Канали:"
+msgid "Channels"
+msgstr "Канали"
 
-msgctxt "IDS_ARS_WASAPI_METHOD"
-msgid "WASAPI method:"
-msgstr "WASAPI метод:"
+msgctxt "IDS_AG_DEFAULT"
+msgid "Default"
+msgstr "По подразбиране"
 
-msgctxt "IDS_ARS_DUMMY_CHANNELS"
-msgid "Don't fill channels when upmixing"
-msgstr "Да не се запълват каналите при upmixing"
+msgctxt "IDS_ARS_PAUSE_KEEP_ACTIVE"
+msgid "Keep audio device active when paused"
+msgstr ""
 
 msgctxt "IDS_ARS_TIP_BITEXACT_OUTPUT"
 msgid ""
@@ -5006,13 +5018,9 @@ msgstr ""
 "Рендера ще опита да инициализира устройството с пропускане на някои "
 "проверки."
 
-msgctxt "IDS_FILTER_RESET_SETTINGS"
-msgid "Reset"
-msgstr "Изчистване"
-
-msgctxt "IDS_AG_DEFAULT"
-msgid "Default"
-msgstr "По подразбиране"
+msgctxt "IDS_ARS_TIP_PAUSE_KEEP_ACTIVE"
+msgid "The renderer will send inaudible noise to the device."
+msgstr ""
 
 msgctxt "IDS_CMD_THUMBNAILS"
 msgid "/thumbnails\tCreate thumbnails"

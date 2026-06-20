@@ -648,10 +648,6 @@ msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "Skjul automatisk musemarkøren under afspilning i vindue-tilstand"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Vis \"Spiller nu\" oplysninger i Skype's stemningsmeddelelse"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Aktivér understøttelse af Logitech LCD (eksperimental)"

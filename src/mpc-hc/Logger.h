@@ -25,6 +25,7 @@
 
 enum class LogTargets {
     PLAYER    =  1,
+    GRAPH     =  2,
     YDL       =  4,
     SUBTITLES =  8,
     BDA       = 16,
@@ -39,6 +40,12 @@ namespace
     constexpr LPCTSTR GetFileName<LogTargets::PLAYER>()
     {
         return _T("player.log");
+    }
+
+    template<>
+    constexpr LPCTSTR GetFileName<LogTargets::GRAPH>()
+    {
+        return _T("filtergraph.log");
     }
 
     template<>
@@ -142,10 +149,12 @@ private:
 #define MPCHC_LOG2(TARGET, fmt, ...) Logger<LogTargets::TARGET>::Log2(fmt, __VA_ARGS__)
 
 #define PLAYER_LOG(...) MPCHC_LOG2(PLAYER, __VA_ARGS__)
+#define GRAPH_LOG(...) MPCHC_LOG2(GRAPH, __VA_ARGS__)
 #define BDA_LOG(...) MPCHC_LOG(BDA, __VA_ARGS__)
 #define SUBTITLES_LOG(...) MPCHC_LOG(SUBTITLES, __VA_ARGS__)
 #define YDL_LOG(fmt, ...) MPCHC_LOG2(YDL, fmt, __VA_ARGS__)
 
 #define USE_LOGGER(s) (s.DebugLogMask & (int)LogTargets::PLAYER)
+#define USE_GRAPH_LOGGER(s) (s.DebugLogMask & (int)LogTargets::GRAPH)
 
 #define FLUSH_LOGGER() _flushall()

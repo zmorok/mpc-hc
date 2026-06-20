@@ -62,9 +62,6 @@
     <Filter Include="Property Dialogs\File Properties\Pages">
       <UniqueIdentifier>{4a9b9989-f6a5-499e-9611-c7bfe024b7a3}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Integration\Skype">
-      <UniqueIdentifier>{3e62affc-727b-4af9-95eb-76f4eb63918c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Integration\Web">
       <UniqueIdentifier>{d7f40587-25b5-46f1-90bb-6751caca4922}</UniqueIdentifier>
     </Filter>
@@ -324,9 +321,6 @@
     </ClCompile>
     <ClCompile Include="ShockwaveGraph.cpp">
       <Filter>Graph\Shockwave Flash</Filter>
-    </ClCompile>
-    <ClCompile Include="SkypeMoodMsgHandler.cpp">
-      <Filter>Integration\Skype</Filter>
     </ClCompile>
     <ClCompile Include="StaticLink.cpp">
       <Filter>Custom Controls</Filter>
@@ -883,9 +877,6 @@
     </ClInclude>
     <ClInclude Include="ShockwaveGraph.h">
       <Filter>Graph\Shockwave Flash</Filter>
-    </ClInclude>
-    <ClInclude Include="SkypeMoodMsgHandler.h">
-      <Filter>Integration\Skype</Filter>
     </ClInclude>
     <ClInclude Include="StaticLink.h">
       <Filter>Custom Controls</Filter>

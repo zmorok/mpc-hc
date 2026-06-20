@@ -370,6 +370,7 @@ HRESULT CDX9RenderingEngine::RenderVideoDrawPath(IDirect3DSurface9* pRenderTarge
         bResizerShaders = false;
         bCustomScreenSpacePixelShaders = false;
         bFinalPass = false;
+        screenSpacePassCount = 1;
     }
 
     hr = InitScreenSpacePipeline(screenSpacePassCount, pRenderTarget);

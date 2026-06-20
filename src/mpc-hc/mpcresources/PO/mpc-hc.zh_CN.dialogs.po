@@ -10,13 +10,14 @@
 # lychichem <leichixian@outlook.com>, 2025
 # YuanHao Du, 2025
 # KaiHuaDou, 2026
+# Fentanyl, 2026
 # 
 msgid ""
 msgstr ""
 "Project-Id-Version: MPC-HC\n"
-"POT-Creation-Date: 2025-12-14 16:16:34+0000\n"
+"POT-Creation-Date: 2026-06-02 02:11:23+0000\n"
 "PO-Revision-Date: 2020-01-02 07:46+0000\n"
-"Last-Translator: KaiHuaDou, 2026\n"
+"Last-Translator: Fentanyl, 2026\n"
 "Language-Team: Chinese (China) (https://app.transifex.com/mpchc/teams/106126/zh_CN/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -641,10 +642,6 @@ msgstr "默认"
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK3"
 msgid "Auto-hide the mouse pointer during playback in windowed mode"
 msgstr "在窗口模式回放时自动隐藏鼠标指针"
-
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "在 Skype 的心情消息中显示 \"现在正在播放\" 的信息"
 
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"

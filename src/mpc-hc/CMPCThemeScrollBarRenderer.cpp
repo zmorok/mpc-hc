@@ -5,6 +5,8 @@
 #include "DpiHelper.h"
 #include <gdiplus.h>
 
+static BOOL sbrIsThemeActive = IsThemeActive();
+
 CMPCThemeScrollBarRenderer* CMPCThemeScrollBarRenderer::s_pActiveRenderer = nullptr;
 
 CMPCThemeScrollBarRenderer::CMPCThemeScrollBarRenderer()
@@ -27,7 +29,7 @@ static bool ScreenToNcClient(HWND hWnd, CPoint& point) {
 }
 
 void CMPCThemeScrollBarRenderer::ProcessMessage(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    if (IsThemeActive()) {
+    if (sbrIsThemeActive) {
         switch (message) {
         case WM_NCMOUSEMOVE:
             OnNcMouseMove(hWnd, wParam, lParam);
@@ -841,7 +843,7 @@ void CMPCThemeScrollBarRenderer::HandleNcPaint(HWND hWnd) {
         ::SetScrollInfo(hWnd, SB_HORZ, &si, true);
     }
 
-    if (!IsThemeActive()) {
+    if (!sbrIsThemeActive) {
         if (GetScrollBarRects(hWnd, vScrollRect, hScrollRect, bHasVScroll, bHasHScroll)) {
             ::GetWindowRect(hWnd, wr);
 

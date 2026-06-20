@@ -446,11 +446,12 @@ STDMETHODIMP CMPCVRAllocatorPresenter::ClearPixelShaders(int target)
 {
 	HRESULT hr = E_FAIL;
 
-	if (TARGET_SCREEN == target) {
-		// experimental
-		if (CComQIPtr<IExFilterConfig> pIExFilterConfig = m_pMPCVR) {
-			hr = pIExFilterConfig->Flt_SetBool("cmd_clearPostScaleShaders", true);
-		}
+	if (CComQIPtr<IExFilterConfig> pIExFilterConfig = m_pMPCVR) {
+        if (TARGET_SCREEN == target) {
+            hr = pIExFilterConfig->Flt_SetBool("cmd_clearPostScaleShaders", true);
+        } else {
+            hr = pIExFilterConfig->Flt_SetBool("cmd_clearPreScaleShaders", true);
+        }
 	}
 	return hr;
 }
@@ -482,8 +483,7 @@ STDMETHODIMP CMPCVRAllocatorPresenter::AddPixelShader(int target, LPCWSTR name, 
 		iProfile = 4;
 	}
 
-	if (codesize && TARGET_SCREEN == target) {
-		// experimental
+	if (codesize) {
 		if (CComQIPtr<IExFilterConfig> pIExFilterConfig = m_pMPCVR) {
 			int rtype = 0;
 			hr = pIExFilterConfig->Flt_GetInt("renderType", &rtype);
@@ -501,7 +501,12 @@ STDMETHODIMP CMPCVRAllocatorPresenter::AddPixelShader(int target, LPCWSTR name, 
 					}
 					p = WriteChunk(p, FCC('CODE'), codesize, (BYTE*)sourceCode);
 
-					hr = pIExFilterConfig->Flt_SetBin("cmd_addPostScaleShader", (LPVOID)pBuf, size);
+                    if (target == TARGET_FRAME) {
+                        hr = pIExFilterConfig->Flt_SetBin("cmd_addPreScaleShader", (LPVOID)pBuf, size);
+                    }
+                    if (target == TARGET_SCREEN || hr != S_OK) {
+                        hr = pIExFilterConfig->Flt_SetBin("cmd_addPostScaleShader", (LPVOID)pBuf, size);
+                    }
 					LocalFree(pBuf);
 				}
 			}

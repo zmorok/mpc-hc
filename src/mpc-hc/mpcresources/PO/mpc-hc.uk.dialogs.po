@@ -650,10 +650,6 @@ msgstr ""
 "Автоматично приховувати вказівник миші під час відтворення у віконному "
 "режимі"
 
-msgctxt "IDD_PPAGETWEAKS_IDC_CHECK4"
-msgid "Display \"Now Playing\" information in Skype's mood message"
-msgstr "Надавати інформацію \"Зараз слухаю\" у повідомленнях настрою Skype"
-
 msgctxt "IDD_PPAGETWEAKS_IDC_CHECK_LCD"
 msgid "Enable Logitech LCD support (experimental)"
 msgstr "Задіяти підтримку Logitech LCD (експериментально)"
