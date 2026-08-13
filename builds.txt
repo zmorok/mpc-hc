@@ -3,7 +3,7 @@ MPC-HC build commands (CMD)
 
 Run these commands from the repository root:
 
-  D:\Programming\mpc-hc
+  D:\MyProgramming\mpc-hc
 
 
 Environment setup for the current CMD session
@@ -84,3 +84,6 @@ Notes
 - Use "Both" instead of "x64" to build x86 and x64 versions.
 - LAVFilters64 in the portable package must contain zlib1.dll,
   libgcc_s_seh-1.dll and libwinpthread-1.dll.
+- The official https://github.com/clsid2/LAVFilters submodule is used. Its
+  FFmpeg revision is pinned recursively by Git, so the custom encoding fork
+  is no longer required.

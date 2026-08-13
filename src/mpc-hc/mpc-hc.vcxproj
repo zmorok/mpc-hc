@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug Lite|Win32">
@@ -39,7 +39,6 @@
     <ProjectGuid>{8CE7E5D0-C821-47AC-A247-28EC95B34670}</ProjectGuid>
     <RootNamespace>mpc-hc</RootNamespace>
     <Keyword>MFCProj</Keyword>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <Import Project="..\platform.props" />
@@ -47,30 +46,6 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseOfMfc>Static</UseOfMfc>
     <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug Lite|x64'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug Lite|Win32'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release Lite|x64'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release Lite|Win32'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <PlatformToolset>v145</PlatformToolset>
-  </PropertyGroup>
-  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -101,8 +76,6 @@
       <SupportUnloadOfDelayLoadedDLL>true</SupportUnloadOfDelayLoadedDLL>
     </Link>
     <ClCompile>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>..\..\include;..\DSUtil;..\filters\renderer\VideoRenderers;..\thirdparty;..\thirdparty\AudioTools;..\thirdparty\MediaInfo\library\Source;..\thirdparty\freetype2\freetype2\include;..\thirdparty\ResizableLib\ResizableLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Manifest>
@@ -126,8 +99,6 @@
       <IgnoreSpecificDefaultLibraries>msvcrt.lib;vcruntime.lib;ucrt.lib</IgnoreSpecificDefaultLibraries>
     </Link>
     <ClCompile>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>26812</DisableSpecificWarnings>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(MPC_DRDUMP)' == '1'">USE_DRDUMP_CRASH_REPORTER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -135,8 +106,6 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="$(Configuration.Contains('Debug'))">
     <ClCompile>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>26812</DisableSpecificWarnings>
     </ClCompile>
     <Link>
@@ -145,11 +114,9 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="$(Configuration.Contains('Lite'))">
     <Link>
-      <AdditionalDependencies>AudioSwitcher.lib;BaseClasses.lib;BaseMuxer.lib;BufferFilter.lib;CmdUI.lib;DeCSS.lib;DSMMuxer.lib;DSUtil.lib;Filters.lib;kasumi.lib;LCDUI.lib;lcms2.lib;MatroskaMuxer.lib;ResizableLib.lib;sizecbar.lib;StreamDriveThru.lib;SubPic.lib;Subtitles.lib;SubtitleSource.lib;SyncClock.lib;system.lib;TreePropSheet.lib;unrar.lib;VideoRenderers.lib;WavDest.lib;zlib.lib;minhook.lib;tinyxml2.lib;RARFileSource.lib;MpcAudioRenderer.lib;AudioTools.lib;ffmpeg.lib;freetype2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>AudioSwitcher.lib;BaseClasses.lib;BaseMuxer.lib;BufferFilter.lib;CmdUI.lib;DeCSS.lib;DSMMuxer.lib;DSUtil.lib;Filters.lib;LCDUI.lib;lcms2.lib;MatroskaMuxer.lib;ResizableLib.lib;sizecbar.lib;StreamDriveThru.lib;SubPic.lib;Subtitles.lib;SubtitleSource.lib;SyncClock.lib;TreePropSheet.lib;unrar.lib;VideoRenderers.lib;WavDest.lib;zlib.lib;minhook.lib;tinyxml2.lib;RARFileSource.lib;MpcAudioRenderer.lib;AudioTools.lib;ffmpeg.lib;freetype2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>MPCHC_LITE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ProjectReference>
@@ -172,11 +139,6 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <Link>
       <AdditionalDependencies>RARFileSource.res;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <ClCompile>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
-      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp20</LanguageStandard>
-    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\thirdparty\MessageBoxDialog\MessageBoxDialog.cpp" />
@@ -235,6 +197,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClCompile Include="CMPCThemeStatusBar.cpp" />
     <ClCompile Include="CMPCThemeTabCtrl.cpp" />
     <ClCompile Include="ColorButton.cpp" />
+    <ClCompile Include="ColorControlsDlg.cpp" />
     <ClCompile Include="ColorProfileUtil.cpp" />
     <ClCompile Include="ComPropertyPage.cpp" />
     <ClCompile Include="ComPropertySheet.cpp" />
@@ -260,12 +223,14 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClCompile Include="FileAssoc.cpp" />
     <ClCompile Include="DropTarget.cpp" />
     <ClCompile Include="FreeviewEPGDecode.cpp" />
+    <ClCompile Include="GPUInfo.cpp" />
     <ClCompile Include="ImageGrayer.cpp" />
     <ClCompile Include="MainFrmControls.cpp" />
     <ClCompile Include="FloatEdit.cpp" />
     <ClCompile Include="FullscreenWnd.cpp" />
     <ClCompile Include="GoToDlg.cpp" />
     <ClCompile Include="GraphThread.cpp" />
+    <ClCompile Include="HistoryDlg.cpp" />
     <ClCompile Include="Ifo.cpp" />
     <ClCompile Include="KeyProvider.cpp" />
     <ClCompile Include="LcdSupport.cpp" />
@@ -301,6 +266,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClCompile Include="Playlist.cpp" />
     <ClCompile Include="PnSPresetsDlg.cpp" />
     <ClCompile Include="PPageAccelTbl.cpp" />
+    <ClCompile Include="Profile.cpp" />
     <ClCompile Include="PPageAdvanced.cpp" />
     <ClCompile Include="PPageAudioRenderer.cpp" />
     <ClCompile Include="PPageAudioSwitcher.cpp" />
@@ -327,7 +293,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClCompile Include="PPageSubMisc.cpp" />
     <ClCompile Include="PPageSubStyle.cpp" />
     <ClCompile Include="PPageSubtitles.cpp" />
-    <ClCompile Include="PPageSync.cpp" />
+    <ClCompile Include="PPageVideoRenderer.cpp" />
     <ClCompile Include="PPageTheme.cpp" />
     <ClCompile Include="PPageToolBar.cpp" />
     <ClCompile Include="PPageToolBarLayout.cpp" />
@@ -432,6 +398,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClInclude Include="CMPCThemeTabCtrl.h" />
     <ClInclude Include="CMPCThemeWin10Api.h" />
     <ClInclude Include="ColorButton.h" />
+    <ClInclude Include="ColorControlsDlg.h" />
     <ClInclude Include="ColorProfileUtil.h" />
     <ClInclude Include="ComPropertyPage.h" />
     <ClInclude Include="ComPropertySheet.h" />
@@ -461,7 +428,9 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClInclude Include="FreeviewEPGDecode.h" />
     <ClInclude Include="FullscreenWnd.h" />
     <ClInclude Include="GoToDlg.h" />
+    <ClInclude Include="GPUInfo.h" />
     <ClInclude Include="GraphThread.h" />
+    <ClInclude Include="HistoryDlg.h" />
     <ClInclude Include="MemoryDCBuffer.h" />
     <ClInclude Include="MediaTransControls.h" />
     <ClInclude Include="Ifo.h" />
@@ -484,6 +453,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClInclude Include="MPCPngImage.h" />
     <ClInclude Include="Mpeg2SectionData.h" />
     <ClInclude Include="mplayerc.h" />
+    <ClInclude Include="Profile.h" />
     <ClInclude Include="MultiMonitor.h" />
     <ClInclude Include="OpenDirHelper.h" />
     <ClInclude Include="OpenDlg.h" />
@@ -531,7 +501,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClInclude Include="PPageSubMisc.h" />
     <ClInclude Include="PPageSubStyle.h" />
     <ClInclude Include="PPageSubtitles.h" />
-    <ClInclude Include="PPageSync.h" />
+    <ClInclude Include="PPageVideoRenderer.h" />
     <ClInclude Include="PPageTheme.h" />
     <ClInclude Include="PPageToolBar.h" />
     <ClInclude Include="PPageToolBarLayout.h" />
@@ -546,6 +516,7 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ClInclude Include="SaveTextFileDialog.h" />
     <ClInclude Include="SaveThumbnailsDialog.h" />
     <ClInclude Include="SelectMediaType.h" />
+    <ClInclude Include="SMTC2Compat.h" />
     <ClInclude Include="SettingsDefines.h" />
     <ClInclude Include="Shaders.h" />
     <ClInclude Include="ShockwaveGraph.h" />
@@ -770,9 +741,6 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     <ProjectReference Include="..\thirdparty\ffmpeg\ffmpeg.vcxproj">
       <Project>{438286b7-a9f4-411d-bcc5-948c40e37d8f}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\thirdparty\fontconfig\libfontconfig.vcxproj">
-      <Project>{dbf1e8f7-5b7d-4cbf-842a-b7e0c02520dc}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\thirdparty\freetype2\freetype2.vcxproj">
       <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
     </ProjectReference>
@@ -790,12 +758,6 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     </ProjectReference>
     <ProjectReference Include="..\thirdparty\libiconv\libiconv.vcxproj">
       <Project>{1704ea01-6b21-4362-9f1f-44d25cf2e0d7}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\thirdparty\liblzma\liblzma.vcxproj">
-      <Project>{85763f39-23df-4c04-b7df-7fbe3e7cf336}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\thirdparty\libxml2\libxml2.vcxproj">
-      <Project>{cfe70273-7a79-4815-af95-1e02e2675e37}</Project>
     </ProjectReference>
     <ProjectReference Include="..\thirdparty\MpcAudioRenderer\MpcAudioRenderer.vcxproj">
       <Project>{d0620ef4-1313-40d5-9069-a82f6fe26994}</Project>
@@ -832,12 +794,6 @@ if not exist "$(OutDir)LAVFilters" if exist "$(SolutionDir)bin\mpc-hc_x86\LAVFil
     </ProjectReference>
     <ProjectReference Include="..\thirdparty\unrar\unrar.vcxproj">
       <Project>{da8461c4-7683-4360-9372-2a9e0f1795c2}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\thirdparty\VirtualDub\Kasumi\Kasumi.vcxproj">
-      <Project>{0d252872-7542-4232-8d02-53f9182aee15}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\thirdparty\VirtualDub\system\system.vcxproj">
-      <Project>{c2082189-3ecb-4079-91fa-89d3c8a305c0}</Project>
     </ProjectReference>
     <ProjectReference Include="..\thirdparty\zita-resampler\zita-resampler.vcxproj">
       <Project>{f3d02050-f39a-4103-8343-09285359a495}</Project>

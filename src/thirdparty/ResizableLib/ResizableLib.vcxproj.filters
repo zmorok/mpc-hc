@@ -11,78 +11,78 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableDialog.cpp">
+    <ClCompile Include="ResizableDialog.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableGrip.cpp">
+    <ClCompile Include="ResizableGrip.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableLayout.cpp">
+    <ClCompile Include="ResizableLayout.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableMinMax.cpp">
+    <ClCompile Include="ResizableMinMax.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableMsgSupport.cpp">
+    <ClCompile Include="ResizablePage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizablePage.cpp">
+    <ClCompile Include="ResizableSheet.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableSheet.cpp">
+    <ClCompile Include="ResizableState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableSheetState.cpp">
+    <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableState.cpp">
+    <ClCompile Include="ResizableMsgSupport.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableVersion.cpp">
+    <ClCompile Include="ResizableSheetState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/ResizableWndState.cpp">
+    <ClCompile Include="ResizableVersion.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ResizableLib/ResizableLib/stdafx.cpp">
+    <ClCompile Include="ResizableWndState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableDialog.h">
+    <ClInclude Include="ResizableDialog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableGrip.h">
+    <ClInclude Include="ResizableGrip.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableLayout.h">
+    <ClInclude Include="ResizableLayout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableMinMax.h">
+    <ClInclude Include="ResizableMinMax.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableMsgSupport.h">
+    <ClInclude Include="ResizableMsgSupport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizablePage.h">
+    <ClInclude Include="ResizablePage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableSheet.h">
+    <ClInclude Include="ResizableSheet.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableSheetState.h">
+    <ClInclude Include="ResizableState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableState.h">
+    <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableVersion.h">
+    <ClInclude Include="ResizableWndState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/ResizableWndState.h">
+    <ClInclude Include="ResizableVersion.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ResizableLib/ResizableLib/stdafx.h">
+    <ClInclude Include="ResizableSheetState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

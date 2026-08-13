@@ -90,7 +90,8 @@ enum : UINT64 {
     CLSW_PRESET1 = CLSW_RESET << 1,
     CLSW_PRESET2 = CLSW_PRESET1 << 1,
     CLSW_PRESET3 = CLSW_PRESET2 << 1,
-    CLSW_CONFIGLAVSPLITTER = CLSW_PRESET3 << 1,
+    CLSW_PRESET4 = CLSW_PRESET3 << 1,
+    CLSW_CONFIGLAVSPLITTER = CLSW_PRESET4 << 1,
     CLSW_CONFIGLAVAUDIO = CLSW_CONFIGLAVSPLITTER << 1,
     CLSW_CONFIGLAVVIDEO = CLSW_CONFIGLAVAUDIO << 1,
     CLSW_MUTE = CLSW_CONFIGLAVVIDEO << 1,
@@ -108,7 +109,7 @@ enum MpcCaptionState {
 }; // flags for Caption & Menu Mode
 
 enum {
-    VIDRNDT_DS_DEFAULT        = 0,
+    VIDRNDT_DS_VMR7           = 0,
     VIDRNDT_DS_OVERLAYMIXER   = 2,
     VIDRNDT_DS_VMR9WINDOWED   = 4,
     VIDRNDT_DS_VMR9RENDERLESS = 6,
@@ -186,6 +187,21 @@ enum favtype {
 enum {
     TIME_TOOLTIP_ABOVE_SEEKBAR,
     TIME_TOOLTIP_BELOW_SEEKBAR
+};
+
+enum {
+    TIME_ON_SEEKBAR_NEVER,
+    TIME_ON_SEEKBAR_ALWAYS,
+    TIME_ON_SEEKBAR_WHEN_STATUSBAR_HIDDEN
+};
+
+enum {
+    STARTUP_PRESET_REMEMBER, // restore last control state (default)
+    STARTUP_PRESET_MINIMAL,
+    STARTUP_PRESET_COMPACT,
+    STARTUP_PRESET_NORMAL,
+    STARTUP_PRESET_CUSTOM,
+    STARTUP_PRESET_COUNT
 };
 
 enum DVB_RebuildFilterGraph {
@@ -272,7 +288,7 @@ struct AutoChangeFullscreenMode {
     unsigned                    uDelay = 0u;
 };
 
-#define ACCEL_LIST_SIZE 203
+#define ACCEL_LIST_SIZE 205
 
 struct wmcmd_base : public ACCEL {
     BYTE mouse;
@@ -509,7 +525,7 @@ class CAppSettings
             return rfe_array[nIndex];
         }
 
-        //void Remove(size_t nIndex);
+        void RemoveEntries(const std::list<CStringW>& hashes);
         void Add(LPCTSTR fn);
         void Add(LPCTSTR fn, ULONGLONG llDVDGuid);
         void Add(RecentFileEntry r, bool current_open = false);
@@ -589,6 +605,13 @@ public:
     bool            fTitleBarTextTitle;
     bool            fKeepHistory;
     int             iRecentFilesNumber;
+    int             iHistoryMaxAgeDays;
+    // Semicolon-separated substrings: a file/URL containing any of them is kept out of the
+    // history. The two lists are equivalent, but the private one is deliberately not exposed
+    // in the options UI, so it can hold terms the user does not want on screen.
+    CString         sHistoryExcludeFilter;
+    CString         sHistoryExcludeFilterPrivate;
+    bool            IsExcludedFromHistory(LPCWSTR path) const;
     CRecentFileListWithMoreInfo MRU;
     CRecentFileAndURLList MRUDub;
     bool            fRememberDVDPos;
@@ -705,6 +728,7 @@ public:
     bool            bSaveImageCurrentTime;
     bool            bAllowInaccurateFastseek;
     bool            bLoopFolderOnPlayNextFile;
+    bool            bNextFileInFolderSortByDate;
     bool            bLockNoPause;
     bool            bPreventDisplaySleep;
     bool            bUseSMTC;
@@ -850,6 +874,8 @@ public:
     bool            fUseSearchInFolder;
     bool            fUseSeekbarHover;
     int             nHoverPosition;
+    int             nTimeOnSeekBar;
+    bool            bTimeOnSeekBarLeft;
     CString         strOSDFont;
     int             nOSDSize;
     bool            bHideWindowedMousePointer;
@@ -867,6 +893,9 @@ public:
     MpcCaptionState eCaptionMenuMode;
     bool            fHideNavigation;
     bool            bHideCaptureSettings;
+    int             nCustomPresetControlState; // CS_* bitmask for the Custom preset (hotkey 4)
+    int             nCustomPresetCaption;      // MpcCaptionState for the Custom preset
+    int             nStartupPreset;            // STARTUP_PRESET_* applied at launch (Remember by default)
     UINT            nCS; // Control state for toolbars
     // Language
     LANGID          language;
@@ -1008,6 +1037,13 @@ public:
     bool bCaptureDeinterlace;
     bool bConfirmFileDelete;
     bool bShowVolumePercentage;
+    // Portable mode: keep the MediaHistory INI and the saved playlist in
+    // %APPDATA%\MPC-HC instead of the player folder (issue #2347 follow-up).
+    bool bHistoryInAppData;
+
+    int LastGPUCheck;
+    CString gpuid1;
+    CString gpuid2;
 
 private:
     struct FilterKey {

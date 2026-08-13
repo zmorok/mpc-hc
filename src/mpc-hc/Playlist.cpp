@@ -36,6 +36,7 @@ CPlaylistItem::CPlaylistItem()
     , m_posPrevShuffle(nullptr)
     , m_type(file)
     , m_duration(0)
+    , m_filetime(0)
     , m_vinput(-1)
     , m_vchannel(-1)
     , m_ainput(-1)
@@ -78,6 +79,7 @@ CPlaylistItem& CPlaylistItem::operator=(const CPlaylistItem& pli)
         m_type = pli.m_type;
         m_fInvalid = pli.m_fInvalid;
         m_duration = pli.m_duration;
+        m_filetime = pli.m_filetime;
         m_vinput = pli.m_vinput;
         m_vchannel = pli.m_vchannel;
         m_ainput = pli.m_ainput;
@@ -171,7 +173,7 @@ void CPlaylistItem::AutoLoadFiles()
 
                 WIN32_FIND_DATA fd;
                 ZeroMemory(&fd, sizeof(WIN32_FIND_DATA));
-                HANDLE hFind = FindFirstFile(fn.Left(i) + _T("*.*"), &fd);
+                HANDLE hFind = FindFirstFile(PathUtils::StripExtensionAndRarVolumeSuffix(fn) + _T("*.*"), &fd);
                 if (hFind != INVALID_HANDLE_VALUE) {
                     do {
                         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -207,12 +209,8 @@ void CPlaylistItem::AutoLoadFiles()
 
         CString dir = fn;
         dir.Replace('\\', '/');
-        int l  = dir.ReverseFind('/') + 1;
-        int l2 = dir.ReverseFind('.');
-        if (l2 < l) { // no extension, read to the end
-            l2 = fn.GetLength();
-        }
-        CString title = dir.Mid(l, l2 - l);
+        int l = dir.ReverseFind('/') + 1;
+        CString title = PathUtils::StripExtensionAndRarVolumeSuffix(dir.Mid(l));
         paths.Add(title);
 
         CAtlArray<Subtitle::SubFile> ret;
@@ -331,15 +329,69 @@ void CPlaylist::SortByName()
     }
 }
 
-void CPlaylist::SortByPath()
+// Sorts the items from startIndex until the end of the list, leaving the preceding items untouched.
+void CPlaylist::SortByPath(int startIndex)
 {
-    CAtlArray<plsort2_t> a;
-    a.SetCount(GetCount());
+    if (startIndex < 0) {
+        startIndex = 0;
+    }
+    if ((size_t)startIndex + 1 >= GetCount()) { // nothing to sort
+        return;
+    }
+
     POSITION pos = GetHeadPosition();
+    for (int i = 0; i < startIndex; i++) {
+        GetNext(pos);
+    }
+
+    CAtlArray<plsort2_t> a;
+    a.SetCount(GetCount() - startIndex);
     for (int i = 0; pos; i++, GetNext(pos)) {
         a[i].str = GetAt(pos).m_fns.GetHead(), a[i].pos = pos;
     }
     std::sort(a.GetData(), a.GetData() + a.GetCount());
+    for (size_t i = 0; i < a.GetCount(); i++) {
+        MoveToTail(a[i].pos);
+    }
+}
+
+struct plsort3_t {
+    ULONGLONG time;
+    POSITION pos;
+};
+
+void CPlaylist::SortByDate(bool bIncreasing)
+{
+    CAtlArray<plsort3_t> a;
+    a.SetCount(GetCount());
+    POSITION pos = GetHeadPosition();
+    for (int i = 0; pos; i++, GetNext(pos)) {
+        CPlaylistItem& pli = GetAt(pos);
+        if (pli.m_filetime == 0 && pli.m_type == CPlaylistItem::file && !pli.m_fns.IsEmpty()) {
+            CString& fn = pli.m_fns.GetHead();
+            if (!PathUtils::IsURL(fn)) {
+                pli.m_filetime = 1; // assume unavailable, so we don't check the file again
+                WIN32_FILE_ATTRIBUTE_DATA fad;
+                if (GetFileAttributesEx(fn, GetFileExInfoStandard, &fad)) {
+                    ULARGE_INTEGER ft;
+                    ft.LowPart = fad.ftCreationTime.dwLowDateTime;
+                    ft.HighPart = fad.ftCreationTime.dwHighDateTime;
+                    if (ft.QuadPart > 1) {
+                        pli.m_filetime = ft.QuadPart;
+                    }
+                }
+            }
+        }
+        a[i].time = pli.m_filetime;
+        a[i].pos = pos;
+    }
+    // items without a valid time (URLs, missing files) always go to the bottom
+    std::stable_sort(a.GetData(), a.GetData() + a.GetCount(), [bIncreasing](const plsort3_t& lhs, const plsort3_t& rhs) {
+        if (lhs.time <= 1 || rhs.time <= 1) {
+            return rhs.time <= 1 && lhs.time > 1;
+        }
+        return bIncreasing ? lhs.time < rhs.time : lhs.time > rhs.time;
+    });
     for (size_t i = 0; i < a.GetCount(); i++) {
         MoveToTail(a[i].pos);
     }

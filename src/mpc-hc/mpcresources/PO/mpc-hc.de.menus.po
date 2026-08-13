@@ -13,7 +13,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: MPC-HC\n"
-"POT-Creation-Date: 2025-04-26 17:38:13+0000\n"
+"POT-Creation-Date: 2026-07-18 21:00:08+0000\n"
 "PO-Revision-Date: 2020-01-02 07:46+0000\n"
 "Last-Translator: Maik Dießner, 2026\n"
 "Language-Team: German (https://app.transifex.com/mpchc/teams/106126/de/)\n"
@@ -158,6 +158,10 @@ msgstr "&Kompakt"
 msgctxt "ID_VIEW_PRESETS_NORMAL"
 msgid "&Normal"
 msgstr "&Normal"
+
+msgctxt "ID_VIEW_PRESETS_CUSTOM"
+msgid "C&ustom"
+msgstr "&Benutzerdefiniert"
 
 msgctxt "ID_VIEW_FULLSCREEN"
 msgid "F&ull Screen"
@@ -359,17 +363,9 @@ msgctxt "ID_VIEW_FLUSHGPU_WAIT"
 msgid "&Wait for flushes"
 msgstr "&Auf geleerte GPU warten"
 
-msgctxt "POPUP"
-msgid "R&eset"
-msgstr "Vor&einstellungen"
-
 msgctxt "ID_VIEW_RESET_DEFAULT"
 msgid "Reset to &default renderer settings"
 msgstr "&Standard-Einstellungen laden"
-
-msgctxt "ID_VIEW_RESET_OPTIMAL"
-msgid "Reset to &optimal renderer settings"
-msgstr "&Optimierte Einstellungen laden"
 
 msgctxt "POPUP"
 msgid "Video &Frame"
@@ -670,6 +666,10 @@ msgstr "Tempo &zurücksetzen"
 msgctxt "ID_FILTERS"
 msgid "&Filters"
 msgstr "Fi&lter"
+
+msgctxt "ID_COLOR_CONTROLS"
+msgid "&Color controls..."
+msgstr ""
 
 msgctxt "ID_SHADERS"
 msgid "S&haders"

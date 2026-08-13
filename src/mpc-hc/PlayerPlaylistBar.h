@@ -85,6 +85,7 @@ private:
     int m_nTimeColWidth;
     void ResizeListColumn();
     void RefreshItem(POSITION pos);
+    void RemoveItemAt(int index);
 
     CPlaylistItem* GetCur();
 
@@ -173,6 +174,7 @@ public:
     void SetCurLabel(CString label);
     void SetCurTime(REFERENCE_TIME rt);
     void Randomize();
+    void SortByPathFrom(int startIndex);
     void UpdateLabel(CString in);
 
     void Refresh();

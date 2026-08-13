@@ -28,6 +28,7 @@
 #include "EventDispatcher.h"
 #include "DpiHelper.h"
 #include "AppSettings.h"
+#include "Profile.h"
 #include "../filters/renderer/VideoRenderers/RenderersSettings.h"
 #include "resource.h"
 
@@ -158,22 +159,58 @@ public:
 
     void ShowCmdlnSwitches() const;
 
-    bool StoreSettingsToIni();
+    bool StoreSettingsToIni(bool bKeepRegistryCopy = false);
     bool StoreSettingsToRegistry();
     CString GetIniPath() const;
     bool IsIniValid() const;
+    // True when settings are stored in the registry (as opposed to an INI file).
+    bool IsUsingRegistry() const;
+    // Keep the cached HistoryInAppData option in sync when it is changed
+    // through the advanced options (see UseAppDataForHistory).
+    void SetHistoryInAppData(bool inAppData);
     bool ChangeSettingsLocation(bool useIni);
     bool ExportSettings(CString savePath, CString subKey = _T(""));
+    bool ExportSettingsZip(const CString& zipPath);
 
 private:
-    std::map<CString, std::map<CString, CString, CStringUtils::IgnoreCaseLess>, CStringUtils::IgnoreCaseLess> m_ProfileMap;
-    bool m_bProfileInitialized;
-    bool m_bQueuedProfileFlush;
-    void InitProfile();
-    std::recursive_mutex m_profileMutex;
-    ULONGLONG m_dwProfileLastAccessTick;
+    // Cached HistoryInAppData option; -1 until first read.
+    int m_iHistoryInAppData = -1;
+    // True when the HistoryInAppData option is set in the settings store. The
+    // first call reads the raw value (it happens before LoadSettings() has
+    // run); afterwards the cached copy is used, kept in sync by
+    // SetHistoryInAppData().
+    bool UseAppDataForHistory();
+    // Resolved location of the MediaHistory INI (portable mode): next to the
+    // executable by default, %APPDATA%\MPC-HC when the HistoryInAppData option
+    // is set or the program folder is not writable. Carries an existing file
+    // over when the location changes.
+    CStringW ResolveHistoryIniPath();
+    // Set up the settings store: in portable (INI) mode, create the separate
+    // MediaHistory store and perform the one-time split out of the main file.
+    void SetupSettingsStore();
+    // Set up the separate MediaHistory store (portable/INI mode) incl. the
+    // one-time split of MediaHistory out of the main settings file.
+    void SetupHistoryStore();
+    // User-visible settings policies deferred until a normal launch is committed
+    // (skipped for /help, /close, file-association and other utility switches):
+    // currently just the HKLM machine-defaults import.
+    void ApplySettingsPolicies();
+    // Route a section to the MediaHistory store when applicable, else m_Profile.
+    CProfile& ProfileForSection(LPCWSTR lpszSection);
+    // Import machine-wide default settings from HKLM\Software\MPC-HC into the
+    // user store once, gated by SettingsReset / SettingsTimestamp (issue #2347).
+    void ApplyHKLMDefaults();
+    void ImportHKLMTree(HKEY hKey, const CStringW& section);
 
 public:
+    // The settings store (HKCU\Software\MPC-HC\MPC-HC or <exe>.ini). All
+    // GetProfile*/WriteProfile* overrides below delegate to it (via
+    // ProfileForSection).
+    CProfile m_Profile;
+    // Separate MediaHistory store (INI mode only; registry installs keep
+    // history in the registry). Null in registry mode.
+    std::unique_ptr<CProfile> m_HistoryProfile;
+
     void FlushProfile(bool bForce = true);
     virtual BOOL GetProfileBinary(LPCTSTR lpszSection, LPCTSTR lpszEntry, LPBYTE* ppData, UINT* pBytes) override;
     virtual UINT GetProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nDefault) override;
@@ -190,6 +227,10 @@ public:
 
     bool GetAppSavePath(CString& path);
     bool GetAppDataPath(CString& path);
+    // Folder for the saved playlist (default.mpcpl). Follows the MediaHistory
+    // store's folder in portable mode, so the HistoryInAppData option (and the
+    // unwritable-program-folder fallback) relocates both together.
+    bool GetPlaylistSavePath(CString& path);
 
     bool m_fClosingState;
     bool m_bThemeLoaded;
@@ -228,6 +269,11 @@ public:
     afx_msg void OnFileExit();
     afx_msg void OnHelpShowcommandlineswitches();
 };
+
+bool ReadRegistryDWORD(HKEY hKeyRoot, const wchar_t* subKey, const wchar_t* valueName, DWORD& value);
+bool ReadRegistryString(HKEY hKeyRoot, LPCWSTR subKey, LPCWSTR valueName, CString& value);
+bool WriteRegistryDWORD(HKEY hKeyRoot, LPCWSTR subKey, LPCWSTR valueName, DWORD value);
+bool WriteRegistryString(HKEY hKeyRoot, LPCWSTR subKey, LPCWSTR valueName, const CString& value);
 
 #define AfxGetAppSettings() (*static_cast<CMPlayerCApp*>(AfxGetApp())->m_s.get())
 #define AfxGetMyApp()       static_cast<CMPlayerCApp*>(AfxGetApp())

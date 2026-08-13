@@ -2828,6 +2828,10 @@ HRESULT CMpcAudioRenderer::StartAudioClient()
 			RenderWasapiBuffer();
 
 			CAutoLock cAutoLock(&m_csAudioClock);
+            if (!m_pAudioClient) {
+                ASSERT(false);
+                return E_FAIL;
+            }
 			if (FAILED(hr = m_pAudioClient->Start())) {
 				TRACE(L"CMpcAudioRenderer::StartAudioClient() - start audio client failed (0x%08x)\n", hr);
 				return hr;
@@ -3312,6 +3316,7 @@ void CMpcAudioRenderer::StartReleaseTimer()
 
 void CMpcAudioRenderer::EndReleaseTimer()
 {
+    CAutoLock cRenderLock(&m_csRender);
 	if (m_hReleaseTimerHandle) {
 		std::ignore = DeleteTimerQueueTimer(nullptr, m_hReleaseTimerHandle, INVALID_HANDLE_VALUE);
 		m_hReleaseTimerHandle = nullptr;

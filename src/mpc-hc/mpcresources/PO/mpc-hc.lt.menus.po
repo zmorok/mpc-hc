@@ -153,6 +153,10 @@ msgctxt "ID_VIEW_PRESETS_NORMAL"
 msgid "&Normal"
 msgstr "&Normalus"
 
+msgctxt "ID_VIEW_PRESETS_CUSTOM"
+msgid "C&ustom"
+msgstr ""
+
 msgctxt "ID_VIEW_FULLSCREEN"
 msgid "F&ull Screen"
 msgstr "Pilno &ekrano veiksena"
@@ -353,17 +357,9 @@ msgctxt "ID_VIEW_FLUSHGPU_WAIT"
 msgid "&Wait for flushes"
 msgstr "Laukti atminties valymų"
 
-msgctxt "POPUP"
-msgid "R&eset"
-msgstr "Atstatyti"
-
 msgctxt "ID_VIEW_RESET_DEFAULT"
 msgid "Reset to &default renderer settings"
 msgstr "Atstatyti numatytuosius atvaizdavimo nustatymus"
-
-msgctxt "ID_VIEW_RESET_OPTIMAL"
-msgid "Reset to &optimal renderer settings"
-msgstr "Nustatyti optimalius atvaizdavimo nustatymus"
 
 msgctxt "POPUP"
 msgid "Video &Frame"
@@ -664,6 +660,10 @@ msgstr "&Atstatyti greitį"
 msgctxt "ID_FILTERS"
 msgid "&Filters"
 msgstr "&Filtrai"
+
+msgctxt "ID_COLOR_CONTROLS"
+msgid "&Color controls..."
+msgstr ""
 
 msgctxt "ID_SHADERS"
 msgid "S&haders"

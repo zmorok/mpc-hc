@@ -1560,6 +1560,19 @@ void CPlayerPlaylistBar::SetCurTime(REFERENCE_TIME rt)
     }
 }
 
+// Sorts the items from startIndex until the end of the list on path, leaving the preceding items untouched.
+void CPlayerPlaylistBar::SortByPathFrom(int startIndex)
+{
+    if (startIndex < 0 || (INT_PTR)startIndex + 1 >= m_pl.GetCount()) {
+        return;
+    }
+    POSITION selPos = FindPos(m_list.GetSelectionMark());
+    m_pl.SortByPath(startIndex);
+    SetupList();
+    SyncSelectionToPos(selPos ? selPos : m_pl.GetPos());
+    SavePlaylist();
+}
+
 void CPlayerPlaylistBar::Randomize()
 {
     POSITION selPos = FindPos(m_list.GetSelectionMark());
@@ -1741,7 +1754,7 @@ void CPlayerPlaylistBar::LoadPlaylist(LPCTSTR filename)
 
     m_list.SetRedraw(FALSE);
 
-    if (AfxGetMyApp()->GetAppSavePath(base)) {
+    if (AfxGetMyApp()->GetPlaylistSavePath(base)) {
         CPath p;
         p.Combine(base, _T("default.mpcpl"));
 
@@ -1774,7 +1787,7 @@ void CPlayerPlaylistBar::SavePlaylist(bool can_delay /* = false*/)
 {
     CString base;
 
-    if (AfxGetMyApp()->GetAppSavePath(base)) {
+    if (AfxGetMyApp()->GetPlaylistSavePath(base)) {
         CPath p;
         p.Combine(base, _T("default.mpcpl"));
 
@@ -1882,7 +1895,15 @@ void CPlayerPlaylistBar::ResizeListColumn()
         m_list.SetColumnWidth(COL_NAME, 0);
         m_list.MoveWindow(listR, FALSE);
         m_list.GetClientRect(r);
-        m_list.SetColumnWidth(COL_NAME, std::max(0, r.Width() - m_nTimeColWidth));
+        int width = r.Width();
+        // The list does not update its scrollbars while redraw is disabled, so when items were
+        // added in that state (playlist restored at startup) the client rect still reports the
+        // full width. Reserve room for the vertical scrollbar that is about to appear, else the
+        // name column ends up too wide and a spurious horizontal scrollbar is shown.
+        if (width == listR.Width() && m_list.GetItemCount() > m_list.GetCountPerPage()) {
+            width -= m_pMainFrame->m_dpi.GetSystemMetricsDPI(SM_CXVSCROLL);
+        }
+        m_list.SetColumnWidth(COL_NAME, std::max(0, width - m_nTimeColWidth));
         m_list.SetRedraw(TRUE);
 
         Invalidate();
@@ -1903,6 +1924,37 @@ void CPlayerPlaylistBar::OnSize(UINT nType, int cx, int cy)
     ResizeListColumn();
 }
 
+void CPlayerPlaylistBar::RemoveItemAt(int index)
+{
+    CAutoLock pledit(&m_plEditLock);
+
+    if (m_pl.GetCount() > 1) {
+        POSITION remplpos = FindPos(index);
+        if (!remplpos) {
+            ASSERT(FALSE);
+            return;
+        }
+        if (m_pl.RemoveAt(remplpos) && m_pMainFrame->IsStateLoadedOrLoading()) {
+            m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+        }
+        RebuildPosMap();
+        m_list.SetItemCountEx((int)m_pl.GetCount(), LVSICF_NOINVALIDATEALL);
+        m_list.Invalidate();
+
+        if (m_list.GetItemCount() > 0) {
+            int sel = (index < m_list.GetItemCount()) ? index : m_list.GetItemCount() - 1;
+            m_list.SetItemState(sel, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+            m_list.SetSelectionMark(sel);
+        }
+        ResizeListColumn();
+    } else {
+        if (Empty() && m_pMainFrame->IsStateLoadedOrLoading()) {
+            m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+        }
+    }
+    SavePlaylist(true);
+}
+
 void CPlayerPlaylistBar::OnLvnKeyDown(NMHDR* pNMHDR, LRESULT* pResult)
 {
     LPNMLVKEYDOWN pLVKeyDown = reinterpret_cast<LPNMLVKEYDOWN>(pNMHDR);
@@ -1918,33 +1970,7 @@ void CPlayerPlaylistBar::OnLvnKeyDown(NMHDR* pNMHDR, LRESULT* pResult)
     selected--; // actual list index
 
     if (pLVKeyDown->wVKey == VK_DELETE) {
-        if (m_pl.GetCount() > 1) {
-            POSITION remplpos = FindPos(selected);
-            POSITION curplpos = m_pl.GetPos();
-            if (!remplpos) {
-                ASSERT(FALSE);
-                return;
-            }
-            if (remplpos == curplpos && m_pMainFrame->IsStateLoadedOrLoading()) {
-                m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-            }
-            m_pl.RemoveAt(remplpos);
-            RebuildPosMap();
-            m_list.SetItemCountEx((int)m_pl.GetCount(), LVSICF_NOINVALIDATEALL);
-            m_list.Invalidate();
-
-            if (m_list.GetItemCount() > 0) {
-                int sel = (selected < m_list.GetItemCount()) ? selected : m_list.GetItemCount() - 1;
-                m_list.SetItemState(sel, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-                m_list.SetSelectionMark(sel);
-            }
-            ResizeListColumn();
-        } else {
-           if (Empty() && m_pMainFrame->IsStateLoadedOrLoading()) {
-                m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-            }
-        }
-
+        RemoveItemAt(selected);
         *pResult = TRUE;
     } else if (pLVKeyDown->wVKey == VK_SPACE) {
         m_pl.SetPos(FindPos(selected));
@@ -2450,10 +2476,17 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
         M_SAVEAS,
         M_SORTBYNAME,
         M_SORTBYPATH,
+        M_SORTBYDATENEWEST,
+        M_SORTBYDATEOLDEST,
         M_RANDOMIZE,
         M_SORTBYID,
         M_SHUFFLE,
-        M_HIDEFULLSCREEN
+        M_HIDEFULLSCREEN,
+        M_POSITION_LEFT,
+        M_POSITION_TOP,
+        M_POSITION_RIGHT,
+        M_POSITION_BOTTOM,
+        M_POSITION_FLOAT
     };
 
     CAppSettings& s = AfxGetAppSettings();
@@ -2480,31 +2513,38 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
     }
     m.AppendMenu(styleListNotEmpty, M_SAVEAS, ResStr(IDS_PLAYLIST_SAVEAS));
     m.AppendMenu(MF_SEPARATOR);
-#if 0
     {
-        // Fixme: rendering broken in light theme
         CMPCThemeMenu sortMenu;
         sortMenu.CreatePopupMenu();
         UINT styleListNotEmptyPopup = MF_POPUP | (!m_pl.GetCount() ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED);
         sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYNAME, ResStr(IDS_PLAYLIST_SORTBYLABEL));
         sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYPATH, ResStr(IDS_PLAYLIST_SORTBYPATH));
+        sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYDATENEWEST, ResStr(IDS_PLAYLIST_SORTBYDATE_NEWEST));
+        sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYDATEOLDEST, ResStr(IDS_PLAYLIST_SORTBYDATE_OLDEST));
         sortMenu.AppendMenu(styleListNotEmpty, M_RANDOMIZE, ResStr(IDS_PLAYLIST_RANDOMIZE));
         sortMenu.AppendMenu(MF_SEPARATOR);
         sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYID, ResStr(IDS_PLAYLIST_RESTORE));
         m.AppendMenu(styleListNotEmptyPopup, (UINT_PTR)sortMenu.GetSafeHmenu(), ResStr(IDS_PLAYLIST_SORT));
         sortMenu.Detach();
     }
-#else
-    m.AppendMenu(styleListNotEmpty, M_SORTBYNAME, ResStr(IDS_PLAYLIST_SORTBYLABEL));
-    m.AppendMenu(styleListNotEmpty, M_SORTBYPATH, ResStr(IDS_PLAYLIST_SORTBYPATH));
-    m.AppendMenu(styleListNotEmpty, M_RANDOMIZE, ResStr(IDS_PLAYLIST_RANDOMIZE));
-    m.AppendMenu(styleListNotEmpty, M_SORTBYID, ResStr(IDS_PLAYLIST_RESTORE));
-#endif
     m.AppendMenu(MF_SEPARATOR);
     m.AppendMenu(MF_STRING | MF_ENABLED | (s.bShufflePlaylistItems ? MF_CHECKED : MF_UNCHECKED), M_SHUFFLE, ResStr(IDS_PLAYLIST_SHUFFLE));
     m.AppendMenu(MF_SEPARATOR);
     m.AppendMenu(MF_STRING | MF_ENABLED | (s.bHidePlaylistFullScreen ? MF_CHECKED : MF_UNCHECKED), M_HIDEFULLSCREEN, ResStr(IDS_PLAYLIST_HIDEFS));
-    if (AppNeedsThemedControls()) {
+    m.AppendMenu(MF_SEPARATOR);
+    {
+        const UINT dockBarID = GetParent()->GetDlgCtrlID();
+        CMPCThemeMenu positionMenu;
+        positionMenu.CreatePopupMenu();
+        positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_LEFT ? MF_CHECKED : MF_UNCHECKED), M_POSITION_LEFT, ResStr(IDS_PLAYLIST_POSITION_LEFT));
+        positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_TOP ? MF_CHECKED : MF_UNCHECKED), M_POSITION_TOP, ResStr(IDS_PLAYLIST_POSITION_TOP));
+        positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_RIGHT ? MF_CHECKED : MF_UNCHECKED), M_POSITION_RIGHT, ResStr(IDS_PLAYLIST_POSITION_RIGHT));
+        positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_BOTTOM ? MF_CHECKED : MF_UNCHECKED), M_POSITION_BOTTOM, ResStr(IDS_PLAYLIST_POSITION_BOTTOM));
+        positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_FLOAT ? MF_CHECKED : MF_UNCHECKED), M_POSITION_FLOAT, ResStr(IDS_PLAYLIST_POSITION_FLOAT));
+        m.AppendMenu(MF_STRING | MF_POPUP | MF_ENABLED, (UINT_PTR)positionMenu.GetSafeHmenu(), ResStr(IDS_PLAYLIST_POSITION));
+        positionMenu.Detach();
+    }
+    if (AppIsThemeLoaded()) {
         m.fulfillThemeReqs();
     }
 
@@ -2525,19 +2565,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
             m_pl.SetPos(m_pl.GetTailPosition());
             break;
         case M_REMOVE:
-            if (m_pl.GetCount() > 1) {
-                if (m_pl.RemoveAt(pos)) {
-                    m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-                }
-                RebuildPosMap();
-                m_list.SetItemCountEx((int)m_pl.GetCount(), LVSICF_NOINVALIDATEALL);
-                m_list.Invalidate();
-            } else {
-                if (Empty()) {
-                    m_pMainFrame->PostMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-                }
-            }
-            SavePlaylist(true);
+            RemoveItemAt(lvhti.iItem);
             break;
         case M_RECYCLE:
             DeleteFileInPlaylist(pos, true);
@@ -2567,6 +2595,15 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
         case M_SORTBYPATH: {
             POSITION selPos = FindPos(m_list.GetSelectionMark());
             m_pl.SortByPath();
+            SetupList();
+            SyncSelectionToPos(selPos ? selPos : m_pl.GetPos());
+            SavePlaylist();
+            break;
+        }
+        case M_SORTBYDATENEWEST:
+        case M_SORTBYDATEOLDEST: {
+            POSITION selPos = FindPos(m_list.GetSelectionMark());
+            m_pl.SortByDate(nID == M_SORTBYDATEOLDEST);
             SetupList();
             SyncSelectionToPos(selPos ? selPos : m_pl.GetPos());
             SavePlaylist();
@@ -2719,6 +2756,54 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
         case M_HIDEFULLSCREEN:
             s.bHidePlaylistFullScreen = !s.bHidePlaylistFullScreen;
             m_pMainFrame->HidePlaylistFullScreen();
+            break;
+        case M_POSITION_LEFT:
+            if (GetParent()->GetDlgCtrlID() != AFX_IDW_DOCKBAR_LEFT) {
+                m_pMainFrame->DockControlBar(this, AFX_IDW_DOCKBAR_LEFT);
+            }
+            break;
+        case M_POSITION_TOP:
+            if (GetParent()->GetDlgCtrlID() != AFX_IDW_DOCKBAR_TOP) {
+                m_pMainFrame->DockControlBar(this, AFX_IDW_DOCKBAR_TOP);
+            }
+            break;
+        case M_POSITION_RIGHT:
+            if (GetParent()->GetDlgCtrlID() != AFX_IDW_DOCKBAR_RIGHT) {
+                m_pMainFrame->DockControlBar(this, AFX_IDW_DOCKBAR_RIGHT);
+            }
+            break;
+        case M_POSITION_BOTTOM:
+            if (GetParent()->GetDlgCtrlID() != AFX_IDW_DOCKBAR_BOTTOM) {
+                m_pMainFrame->DockControlBar(this, AFX_IDW_DOCKBAR_BOTTOM);
+            }
+            break;
+        case M_POSITION_FLOAT:
+            if (GetParent()->GetDlgCtrlID() != AFX_IDW_DOCKBAR_FLOAT) {
+                CRect rectMain;
+                m_pMainFrame->GetWindowRect(rectMain);
+                CPoint fp(rectMain.right, rectMain.top);
+
+                CRect rectDesktop;
+                GetDesktopWindow()->GetWindowRect(&rectDesktop);
+
+                CRect rect;
+                GetWindowRect(rect);
+
+                if (fp.x < rectDesktop.left) {
+                    fp.x = rectDesktop.left;
+                }
+                if (fp.y < rectDesktop.top) {
+                    fp.y = rectDesktop.top;
+                }
+                if (fp.x + rect.Width() > rectDesktop.right) {
+                    fp.x = rectDesktop.left;
+                }
+                if (fp.y + rect.Height() > rectDesktop.bottom) {
+                    fp.y = rectDesktop.top;
+                }
+
+                m_pMainFrame->FloatControlBar(this, fp);
+            }
             break;
         default:
             break;

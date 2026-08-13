@@ -39,9 +39,6 @@
     <ClInclude Include="libass\libass\ass_font.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
-    <ClInclude Include="libass\libass\ass_fontconfig.h">
-      <Filter>Header Files\libass</Filter>
-    </ClInclude>
     <ClInclude Include="libass\libass\ass_parse.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
@@ -93,22 +90,26 @@
     <ClInclude Include="libass\libass\ass_outline.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
+    <ClInclude Include="libass\libass\wyhash.h">
+      <Filter>Header Files\libass</Filter>
+    </ClInclude>
     <ClInclude Include="libass\libass\ass_bitmap_engine.h">
+      <Filter>Header Files\libass</Filter>
+    </ClInclude>
+    <ClInclude Include="libass\libass\ass_directwrite_info_template.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
     <ClInclude Include="libass\libass\ass_filesystem.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
+    <ClInclude Include="libass\libass\ass_library.h">
+      <Filter>Header Files\libass</Filter>
+    </ClInclude>
     <ClInclude Include="config.h">
       <Filter>Header Files\libass</Filter>
     </ClInclude>
-    <ClInclude Include="libass\libass\c\blur_template.h" />
-    <ClInclude Include="libass\libass\c\rasterizer_template.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="libass\libass\ass_fontconfig.c">
-      <Filter>Source Files\libass</Filter>
-    </ClCompile>
     <ClCompile Include="libass\libass\ass_library.c">
       <Filter>Source Files\libass</Filter>
     </ClCompile>
@@ -166,11 +167,9 @@
     <ClCompile Include="libass\libass\ass_filesystem.c">
       <Filter>Source Files\libass</Filter>
     </ClCompile>
-    <ClCompile Include="libass\libass\ass_bitmap_engine.c" />
-    <ClCompile Include="libass\libass\c\c_rasterizer.c" />
-    <ClCompile Include="libass\libass\c\c_blend_bitmaps.c" />
-    <ClCompile Include="libass\libass\c\c_blur.c" />
-    <ClCompile Include="libass\libass\c\c_be_blur.c" />
+    <ClCompile Include="libass\libass\ass_rasterizer_c.c">
+      <Filter>Source Files\libass</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="libass.def">

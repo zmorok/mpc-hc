@@ -21,7 +21,22 @@
     <ClCompile Include="libsoxr\src\filter.c">
       <Filter>libsoxr</Filter>
     </ClCompile>
+    <ClCompile Include="libsoxr\src\lsr.c">
+      <Filter>libsoxr</Filter>
+    </ClCompile>
     <ClCompile Include="libsoxr\src\pffft32s.c">
+      <Filter>libsoxr</Filter>
+    </ClCompile>
+    <ClCompile Include="libsoxr\src\rate32.c">
+      <Filter>libsoxr</Filter>
+    </ClCompile>
+    <ClCompile Include="libsoxr\src\rate32s.c">
+      <Filter>libsoxr</Filter>
+    </ClCompile>
+    <ClCompile Include="libsoxr\src\rate64.c">
+      <Filter>libsoxr</Filter>
+    </ClCompile>
+    <ClCompile Include="libsoxr\src\simd.c">
       <Filter>libsoxr</Filter>
     </ClCompile>
     <ClCompile Include="libsoxr\src\soxr.c">
@@ -30,14 +45,6 @@
     <ClCompile Include="libsoxr\src\vr32.c">
       <Filter>libsoxr</Filter>
     </ClCompile>
-    <ClCompile Include="libsoxr\src\cr.c" />
-    <ClCompile Include="libsoxr\src\cr32.c" />
-    <ClCompile Include="libsoxr\src\cr32s.c" />
-    <ClCompile Include="libsoxr\src\cr64.c" />
-    <ClCompile Include="libsoxr\src\cr64s.c" />
-    <ClCompile Include="libsoxr\src\pffft64s.c" />
-    <ClCompile Include="libsoxr\src\util32s.c" />
-    <ClCompile Include="libsoxr\src\util64s.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="soxr-config.h" />

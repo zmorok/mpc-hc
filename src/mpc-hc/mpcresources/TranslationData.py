@@ -221,7 +221,7 @@ class TranslationData:
 
     def translate(self, translationData):
         migrations={}
-        with open('migrate.csv', 'r', newline='') as csvfile:
+        with open('migrate.csv', 'r', encoding='windows-1252', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 if row['OLDID'] != None and row['NEWID'] != None and row['String'] != None:

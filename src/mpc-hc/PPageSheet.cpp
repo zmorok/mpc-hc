@@ -60,13 +60,11 @@ CPPageSheet::CPPageSheet(LPCTSTR pszCaption, IFilterGraph* pFG, CWnd* pParentWnd
     AddPage(&m_output);
     AddPage(&m_shaders);
     AddPage(&m_fullscreen);
-    AddPage(&m_sync);
     AddPage(&m_tuner);
 #if USE_LAVFILTERS
     AddPage(&m_internalfilters);
 #endif
     AddPage(&m_audioswitcher);
-    AddPage(&m_audiorenderer);
 
     AddPage(&m_externalfilters);
     AddPage(&m_subtitles);
@@ -92,7 +90,7 @@ CPPageSheet::CPPageSheet(LPCTSTR pszCaption, IFilterGraph* pFG, CWnd* pParentWnd
         }
     }
 
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         CMPCThemeUtil::ModifyTemplates(this, RUNTIME_CLASS(CPPageShaders), IDC_LIST1, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS);
         CMPCThemeUtil::ModifyTemplates(this, RUNTIME_CLASS(CPPageShaders), IDC_LIST2, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS);
         CMPCThemeUtil::ModifyTemplates(this, RUNTIME_CLASS(CPPageShaders), IDC_LIST3, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS);
@@ -148,7 +146,7 @@ CMPCThemeTreeCtrl* CPPageSheet::CreatePageTreeObject()
 
 void CPPageSheet::SetTreeCtrlTheme(CTreeCtrl* ctrl)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         ((CMPCThemeTreeCtrl*)ctrl)->fulfillThemeReqs();
     } else {
         __super::SetTreeCtrlTheme(ctrl);
@@ -244,7 +242,7 @@ TreePropSheet::CPropPageFrame* CPPageSheet::CreatePageFrame()
 
 HBRUSH CPPageSheet::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         LRESULT lResult;
         if (pWnd->SendChildNotifyLastMsg(&lResult)) {
             return (HBRUSH)lResult;

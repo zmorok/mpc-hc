@@ -5,15 +5,15 @@
 # MPC HC <adiposegithub@gmail.com>, 2020
 # lifegpc <g1710431395@gmail.com>, 2020
 # CyanVesper <SharpNight93@gmail.com>, 2023
-# YuanHao Du, 2025
 # KaiHuaDou, 2026
+# YuanHao Du, 2026
 # 
 msgid ""
 msgstr ""
 "Project-Id-Version: MPC-HC\n"
-"POT-Creation-Date: 2025-04-26 17:38:13+0000\n"
+"POT-Creation-Date: 2026-07-18 21:00:08+0000\n"
 "PO-Revision-Date: 2020-01-02 07:46+0000\n"
-"Last-Translator: KaiHuaDou, 2026\n"
+"Last-Translator: YuanHao Du, 2026\n"
 "Language-Team: Chinese (China) (https://app.transifex.com/mpchc/teams/106126/zh_CN/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -143,7 +143,7 @@ msgstr "导航(&V)"
 
 msgctxt "POPUP"
 msgid "&Presets..."
-msgstr "预设(&P)..."
+msgstr "预设视图(&P)..."
 
 msgctxt "ID_VIEW_PRESETS_MINIMAL"
 msgid "&Minimal"
@@ -156,6 +156,10 @@ msgstr "简洁(&C)"
 msgctxt "ID_VIEW_PRESETS_NORMAL"
 msgid "&Normal"
 msgstr "普通(&N)"
+
+msgctxt "ID_VIEW_PRESETS_CUSTOM"
+msgid "C&ustom"
+msgstr "自定义"
 
 msgctxt "ID_VIEW_FULLSCREEN"
 msgid "F&ull Screen"
@@ -357,17 +361,9 @@ msgctxt "ID_VIEW_FLUSHGPU_WAIT"
 msgid "&Wait for flushes"
 msgstr "等待刷新完成(&W)"
 
-msgctxt "POPUP"
-msgid "R&eset"
-msgstr "重置(&E)"
-
 msgctxt "ID_VIEW_RESET_DEFAULT"
 msgid "Reset to &default renderer settings"
 msgstr "重置为默认渲染器设置(&D)"
-
-msgctxt "ID_VIEW_RESET_OPTIMAL"
-msgid "Reset to &optimal renderer settings"
-msgstr "重置为优化渲染器设置(&O)"
 
 msgctxt "POPUP"
 msgid "Video &Frame"
@@ -668,6 +664,10 @@ msgstr "重置速率(&E)"
 msgctxt "ID_FILTERS"
 msgid "&Filters"
 msgstr "滤镜(&F)"
+
+msgctxt "ID_COLOR_CONTROLS"
+msgid "&Color controls..."
+msgstr ""
 
 msgctxt "ID_SHADERS"
 msgid "S&haders"

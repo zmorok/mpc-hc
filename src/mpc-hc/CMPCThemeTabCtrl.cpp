@@ -27,7 +27,7 @@ END_MESSAGE_MAP()
 
 HBRUSH CMPCThemeTabCtrl::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         return getCtlColor(pDC, pWnd, nCtlColor);
     } else {
         HBRUSH hbr = __super::OnCtlColor(pDC, pWnd, nCtlColor);
@@ -114,7 +114,7 @@ void CMPCThemeTabCtrl::DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
 
 BOOL CMPCThemeTabCtrl::OnEraseBkgnd(CDC* pDC)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         CRect r;
         GetClientRect(r);
         CMPCThemeUtil::drawParentDialogBGClr(this, pDC, r);
@@ -124,7 +124,7 @@ BOOL CMPCThemeTabCtrl::OnEraseBkgnd(CDC* pDC)
 
 void CMPCThemeTabCtrl::OnPaint()
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         CPaintDC dc(this); // device context for painting
         int oldDC = dc.SaveDC();
         CRect rClient, rContent, rectDC;

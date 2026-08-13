@@ -28,6 +28,7 @@
 #include "tinyxml2/library/tinyxml2.h"
 #include "rapidjson/include/rapidjson/pointer.h"
 #include <wincrypt.h>
+#include <regex>
 
 #pragma warning(disable: 4244)
 
@@ -55,8 +56,12 @@ void SubtitlesProviders::RegisterProviders()
 {
     //Register<OpenSubtitles>(this);
     Register<OpenSubtitles2>(this);
+#if USE_PODNAPISI
     Register<podnapisi>(this);
-    //Register<Napisy24>(this);
+#endif
+#if USE_NAPISY24
+    Register<Napisy24>(this);
+#endif
 }
 
 /******************************************************************************
@@ -376,8 +381,8 @@ SRESULT OpenSubtitles2::Login(const std::string& sUserName, const std::string& s
         headers.Append(_T("Accept: application/json\r\n"));
 
         std::string body(R"({ "username": ")");
-        body = body + sUserName + R"(", "password": ")" + sPassword + R"(" })";
-
+        std::string escaped_pw = std::regex_replace(sPassword, std::regex("\""), "\\\"");
+        body = body + sUserName + R"(", "password": ")" + escaped_pw + R"(" })";
 
         Response response;
         if (CallAPI(httpFile, headers, body, response))
@@ -692,6 +697,7 @@ const std::set<std::string>& OpenSubtitles2::Languages() const
 ** podnapisi
 ******************************************************************************/
 
+#if USE_PODNAPISI
 SRESULT podnapisi::Login(const std::string& sUserName, const std::string& sPassword)
 {
     //TODO: implement
@@ -928,12 +934,13 @@ const std::set<std::string>& podnapisi::Languages() const
         });
     return result;
 }
+#endif
 
 /******************************************************************************
 ** Napisy24
 ******************************************************************************/
 
-#if 0
+#if USE_NAPISY24
 SRESULT Napisy24::Search(const SubtitlesInfo& pFileInfo)
 {
     if (!pFileInfo.manualSearchString.IsEmpty()) {

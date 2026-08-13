@@ -43,7 +43,13 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
   echo "Warning: Git not available or not a git repo. Using dummy values for hash and version number."
 else
   # Get information about the current version
-  describe=$(git describe --long)
+  # Count revisions from the stable tag matching the current fixed version.
+  # A fork may contain newer-version development tags from an older branch,
+  # which must not reset or skew the revision number after an upstream merge.
+  describe=$(git describe --long --match "$ver_fixed" 2>/dev/null)
+  if [[ -z "$describe" ]]; then
+    describe=$(git describe --long)
+  fi
   [[ -z "$quiet" ]] && echo "Describe:  $describe"
 
   # Get the abbreviated hash of the current changeset

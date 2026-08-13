@@ -32,6 +32,7 @@
 #include "VersionInfo.h"
 #include <VersionHelpers.h>
 #include "Monitors.h"
+#include "GPUInfo.h"
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -254,6 +255,8 @@ void CAboutDlg::OnHomepage(NMHDR* pNMHDR, LRESULT* pResult)
 
 void CAboutDlg::OnCopyToClipboard()
 {
+    auto &s = AfxGetAppSettings();
+
     CStringW info = m_appname + _T("\r\n");
     info += CString(_T('-'), m_appname.GetLength()) + _T("\r\n\r\n");
     info += _T("Build information:\r\n");
@@ -285,30 +288,22 @@ void CAboutDlg::OnCopyToClipboard()
         }
     }
 
-    IDirect3D9* pD3D9 = Direct3DCreate9(D3D_SDK_VERSION);
-    if (pD3D9) {
-        for (UINT adapter = 0, adapterCount = pD3D9->GetAdapterCount(); adapter < adapterCount; adapter++) {
-            D3DADAPTER_IDENTIFIER9 adapterIdentifier;
-            if (pD3D9->GetAdapterIdentifier(adapter, 0, &adapterIdentifier) == D3D_OK) {
-                CString deviceName = adapterIdentifier.Description;
-                deviceName.Trim();
-
-                if (adapterCount > 1) {
-                    info.AppendFormat(_T("    GPU%u:               %s"), adapter + 1, deviceName.GetString());
-                } else {
-                    info.AppendFormat(_T("    GPU:                %s"), deviceName.GetString());
-                }
-                if (adapterIdentifier.DriverVersion.QuadPart) {
-                    info.AppendFormat(_T(" (driver version: %s)"),
-                                      FileVersionInfo::FormatVersionString(adapterIdentifier.DriverVersion.LowPart, adapterIdentifier.DriverVersion.HighPart).GetString());
-                }
-                info += _T("\r\n");
-            }
+    GPUDetect gpuinfo = GPUDetect(false);
+    if (gpuinfo.GetCount() > 0) {
+        info.AppendFormat(_T("    GPU:                %s [%s]"), gpuinfo.gpu1.description.GetString(), gpuinfo.GetGPUID1().GetString());
+        if (gpuinfo.gpu1.UMDVersion.QuadPart) {
+            info.AppendFormat(_T(" [driver: %s]"), gpuinfo.gpu1.GetDriverVersionString().GetString());
         }
-        pD3D9->Release();
+        info += _T("\r\n");
+    }
+    if (gpuinfo.GetCount() > 1) {
+        info.AppendFormat(_T("    GPU2:               %s [%s]"), gpuinfo.gpu2.description.GetString(), gpuinfo.GetGPUID2().GetString());
+        if (gpuinfo.gpu2.UMDVersion.QuadPart) {
+            info.AppendFormat(_T(" [driver: %s]"), gpuinfo.gpu2.GetDriverVersionString().GetString());
+        }
+        info += _T("\r\n");
     }
 
-    auto &s = AfxGetAppSettings();
     CMonitors monitors;
 
     CStringW currentMonitorName;

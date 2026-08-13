@@ -217,6 +217,9 @@ bool CYoutubeDLInstance::Run(CString url)
                 // abort without showing error message
                 return false;
             }
+            if (err.GetLength() > 1000) {
+                err = err.Left(1000) + L" <...>";
+            }
             err = _T("yt-dlp/youtube-dl error message:\n\n") + err;
         }
         AfxMessageBox(err, MB_ICONERROR, 0);
@@ -326,7 +329,7 @@ void GetVideoScore(YDLStreamDetails& details) {
     }
 
     if (s.iYDLMaxHeight > 0) {
-        if (details.height > details.width) {
+        if (details.width > 0 && details.height > details.width) {
             // vertical video
             if (s.iYDLMaxHeight >= details.width) {
                 score += 64;

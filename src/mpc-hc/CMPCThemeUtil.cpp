@@ -89,7 +89,9 @@ void CMPCThemeUtil::fulfillThemeReqs(CWnd* wnd, SpecialThemeCases specialCase /*
                 } else if (0 == _tcsicmp(windowClass, WC_BUTTON) && buttonType == BS_GROUPBOX) {
                     CMPCThemeGroupBox* pObject = DEBUG_NEW CMPCThemeGroupBox();
                     makeThemed(pObject, tChild);
-                    SetWindowTheme(tChild->GetSafeHwnd(), L"", L"");
+                    if (AppNeedsThemedControls()) { //only strip the visual style when we take over the painting
+                        SetWindowTheme(tChild->GetSafeHwnd(), L"", L"");
+                    }
                 } else if (0 == _tcsicmp(windowClass, WC_STATIC) && SS_ICON == staticStyle) { //don't touch icons for now
                 } else if (0 == _tcsicmp(windowClass, WC_STATIC) && SS_BITMAP == staticStyle) { //don't touch BITMAPS for now
                 } else if (0 == _tcsicmp(windowClass, WC_STATIC) && SS_OWNERDRAW == staticStyle) { //don't touch OWNERDRAW for now
@@ -185,7 +187,7 @@ void CMPCThemeUtil::makeThemed(CWnd* pObject, CWnd* tChild)
 
 void CMPCThemeUtil::EnableThemedDialogTooltips(CDialog* wnd)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         if (themedDialogToolTip.m_hWnd) {
             themedDialogToolTip.DestroyWindow();
         }
@@ -205,7 +207,7 @@ void CMPCThemeUtil::EnableThemedDialogTooltips(CDialog* wnd)
 }
 
 void CMPCThemeUtil::RedrawDialogTooltipIfVisible() {
-    if (AppIsThemeLoaded() && themedDialogToolTip.m_hWnd) {
+    if (AppNeedsThemedControls() && themedDialogToolTip.m_hWnd) {
         themedDialogToolTip.RedrawIfVisible();
     } else {
         AFX_MODULE_THREAD_STATE* pModuleThreadState = AfxGetModuleThreadState();
@@ -218,7 +220,7 @@ void CMPCThemeUtil::RedrawDialogTooltipIfVisible() {
 
 void CMPCThemeUtil::PlaceThemedDialogTooltip(UINT_PTR nID)
 {
-    if (AppIsThemeLoaded() && IsWindow(themedDialogToolTip)) {
+    if (AppNeedsThemedControls() && IsWindow(themedDialogToolTip)) {
         if (::IsWindow(themedDialogToolTipParent->GetSafeHwnd())) {
             CWnd* controlWnd = themedDialogToolTipParent->GetDlgItem(nID);
             themedDialogToolTip.SetHoverPosition(controlWnd);
@@ -228,7 +230,7 @@ void CMPCThemeUtil::PlaceThemedDialogTooltip(UINT_PTR nID)
 
 void CMPCThemeUtil::RelayThemedDialogTooltip(MSG* pMsg)
 {
-    if (AppIsThemeLoaded() && IsWindow(themedDialogToolTip)) {
+    if (AppNeedsThemedControls() && IsWindow(themedDialogToolTip)) {
         themedDialogToolTip.RelayEvent(pMsg);
     }
 }
@@ -446,7 +448,7 @@ HBRUSH CMPCThemeUtil::getCtlColorFileDialog(HDC hDC, UINT nCtlColor)
 
 HBRUSH CMPCThemeUtil::getCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         initHelperObjects();
         LRESULT lResult;
         if (pWnd->SendChildNotifyLastMsg(&lResult)) {
@@ -467,7 +469,7 @@ HBRUSH CMPCThemeUtil::getCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 
 bool CMPCThemeUtil::MPCThemeEraseBkgnd(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         CRect rect;
         pWnd->GetClientRect(rect);
         if (CTLCOLOR_DLG == nCtlColor) { //only supported "class" for now
@@ -1144,7 +1146,7 @@ void CMPCThemeUtil::drawParentDialogBGClr(CWnd* wnd, CDC* pDC, CRect r, bool fil
 
 void CMPCThemeUtil::fulfillThemeReqs(CProgressCtrl* ctl)
 {
-    if (AppIsThemeLoaded()) {
+    if (AppNeedsThemedControls()) {
         SetWindowTheme(ctl->GetSafeHwnd(), _T(""), _T(""));
         ctl->SetBarColor(CMPCTheme::ProgressBarColor);
         ctl->SetBkColor(CMPCTheme::ProgressBarBGColor);

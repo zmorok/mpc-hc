@@ -55,6 +55,8 @@
 #include "AllocatorCommon.h"
 
 class CDebugShadersDlg;
+class CColorControlsDlg;
+class CHistoryDlg;
 class CFullscreenWnd;
 struct DisplayMode;
 enum MpcCaptionState;
@@ -366,6 +368,11 @@ private:
     CRect m_videoOpenWindowRect;
     bool m_bVideoOpenWindowRectValid = false;
 
+    void ToggleFullscreenWithVideoFrame(UINT nVideoFrameID);
+    void ApplyVideoFrameMode(UINT nVideoFrameID);
+    void SaveVideoOpenWindowRect();
+    void RestoreVideoOpenWindowRect();
+
     void SetDefaultWindowRect(int iMonitor = 0);
     void SetDefaultFullscreenState();
     void RestoreDefaultWindowRect();
@@ -459,6 +466,7 @@ private:
     bool m_bRememberFilePos;
 
     ULONGLONG m_dwLastRun;
+    int m_nLastAppendSelectionIndex; // playlist index where the current batch of redirected opens started
 
     bool m_bBuffering;
 
@@ -468,7 +476,7 @@ private:
 
     bool m_bIsMPCVRExclusiveMode = false;
 
-    void SendStatusMessage(CString msg, int nTimeOut);
+    void SendStatusMessage(CString msg, int nTimeOut, bool bError = false);
     CString m_tempstatus_msg, m_closingmsg;
 
     REFERENCE_TIME m_rtDurationOverride;
@@ -482,7 +490,11 @@ private:
     HRESULT GetOriginalFrame(std::vector<BYTE>& dib, CString& errmsg);
     HRESULT RenderCurrentSubtitles(BYTE* pData);
     bool GetDIB(BYTE** ppData, long& size, bool fSilent = false);
+    BYTE* ConvertDIBTo24bppRGB(BYTE* pData, long size, int& outWidth, int& outHeight, int& outPitch);
     void SaveDIB(LPCTSTR fn, BYTE* pData, long size);
+#if MPC_SMTC_VIDEO_THUMBNAIL
+    bool CaptureVideoThumbnail(std::vector<BYTE>& thumbnail);
+#endif
     CString MakeSnapshotFileName(BOOL thumbnails);
     BOOL IsRendererCompatibleWithSaveImage();
     void SaveImage(LPCTSTR fn, bool displayed, bool includeSubtitles);
@@ -503,6 +515,8 @@ private:
 
     volatile MLS m_eMediaLoadState;
     OAFilterState m_CachedFilterState;
+
+    volatile LONG m_ActiveGraphNotifyEvCode = 0;
 
     bool m_bSettingUpMenus;
     volatile bool m_bOpenMediaActive;
@@ -663,6 +677,7 @@ public:
     void OpenMedia(CAutoPtr<OpenMediaData> pOMD);
     void PlayFavoriteFile(const CString& fav);
     void PlayFavoriteDVD(CString fav);
+    void OpenRecentFileEntry(RecentFileEntry& r);
     FileFavorite ParseFavoriteFile(const CString& fav, CAtlList<CString>& args, REFERENCE_TIME* prtStart = nullptr);
     bool ResetDevice();
     bool DisplayChange();
@@ -756,7 +771,7 @@ public:
 
     void DoAfterPlaybackEvent();
     bool SearchInDir(bool bDirForward, bool bLoop = false);
-    bool WildcardFileSearch(CString searchstr, std::set<CString, CStringUtils::LogicalLess>& results, bool recurse_dirs);
+    bool WildcardFileSearch(CString searchstr, std::set<CString, CStringUtils::LogicalLess>& results, bool recurse_dirs, std::map<CString, ULONGLONG>* creationTimes = nullptr);
     CString lastOpenFile;
     bool CanSkipFromClosedFile();
 
@@ -765,11 +780,6 @@ public:
     virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
     virtual void RecalcLayout(BOOL bNotify = TRUE);
     void EnableDocking(DWORD dwDockStyle);
-
-    void ToggleFullscreenWithVideoFrame(UINT nVideoFrameID);
-    void ApplyVideoFrameMode(UINT nVideoFrameID);
-    void SaveVideoOpenWindowRect();
-    void RestoreVideoOpenWindowRect();
 
     // DVB capture
     void UpdateCurrentChannelInfo(bool bShowOSD = true, bool bShowInfoBar = false);
@@ -850,6 +860,8 @@ protected:  // control bar embedded members
     CEditListEditor m_wndEditListEditor;
 
     std::unique_ptr<CDebugShadersDlg> m_pDebugShaders;
+    std::unique_ptr<CColorControlsDlg> m_pColorControls;
+    std::unique_ptr<CHistoryDlg> m_pHistoryDlg;
 
     LPCTSTR GetRecentFile() const;
 
@@ -1016,12 +1028,16 @@ public:
     afx_msg void OnUpdateViewCapture(CCmdUI* pCmdUI);
     afx_msg void OnViewDebugShaders();
     afx_msg void OnUpdateViewDebugShaders(CCmdUI* pCmdUI);
+    afx_msg void OnViewColorControls();
+    afx_msg void OnUpdateViewColorControls(CCmdUI* pCmdUI);
     afx_msg void OnViewMinimal();
     afx_msg void OnUpdateViewMinimal(CCmdUI* pCmdUI);
     afx_msg void OnViewCompact();
     afx_msg void OnUpdateViewCompact(CCmdUI* pCmdUI);
     afx_msg void OnViewNormal();
     afx_msg void OnUpdateViewNormal(CCmdUI* pCmdUI);
+    afx_msg void OnViewCustom();
+    afx_msg void OnUpdateViewCustom(CCmdUI* pCmdUI);
     afx_msg void OnViewFullscreen();
     afx_msg void OnViewFullscreenSecondary();
     afx_msg void OnUpdateViewFullscreen(CCmdUI* pCmdUI);
@@ -1111,7 +1127,6 @@ public:
     afx_msg void OnViewDisableDesktopComposition();
     afx_msg void OnViewAlternativeVSync();
     afx_msg void OnViewResetDefault();
-    afx_msg void OnViewResetOptimal();
 
     afx_msg void OnViewFullscreenGUISupport();
     afx_msg void OnViewHighColorResolution();
@@ -1215,6 +1230,7 @@ public:
     afx_msg void OnUpdateRecentFileClear(CCmdUI* pCmdUI);
     afx_msg void OnRecentFile(UINT nID);
     afx_msg void OnUpdateRecentFile(CCmdUI* pCmdUI);
+    afx_msg void OnShowHistory();
 
     afx_msg void OnHelpHomepage();
     afx_msg void OnHelpCheckForUpdate();
@@ -1239,6 +1255,7 @@ public:
     void ReleasePreviewGraph();
     HRESULT PreviewWindowHide();
     HRESULT PreviewWindowShow(REFERENCE_TIME rtCur2);
+    void SyncPreviewEdition();
     HRESULT HandleMultipleEntryRar(CStringW fn, int* pEntryIndex = nullptr);
     bool TrySkipWithinRar(bool forward);
     bool CanPreviewUse();
@@ -1393,6 +1410,20 @@ public:
 
     void UpdateControlState(UpdateControlTarget target);
 
+    UINT GetNormalPresetCS() const;
+    void ApplyTimeOnSeekBarChange();
+    void ApplyCustomPresetChange();
+    void ApplyStartupPreset();
+    int m_nActiveViewPreset = 0; // command id of the last-applied view preset, 0 = none (#3256)
+
+    // Reveal the status bar for a message when a preset hides it; stays until next media load (issue #3256).
+    bool m_bStatusBarForcedForMessage = false;
+    bool IsStatusBarForcedForMessage() const { return m_bStatusBarForcedForMessage; }
+    void ShowStatusBarForMessage();
+    void RestoreStatusBarMessageHold();
+    void SetClosingError(const CString& msg); // set the closing message and reveal the status bar (errors)
+    void SetClosingError(UINT nIDmsg);
+
     void ReloadMenus();
 
     // TODO: refactor it outside of MainFrm
@@ -1423,6 +1454,20 @@ public:
 
     void MediaTransportControlSetMedia();
     void MediaTransportControlUpdateState(OAFilterState state);
+    void MediaTransportControlUpdateTimeline(bool force = false);
+    void MediaTransportControlUpdateAutoRepeat();
+#if MPC_SMTC_VIDEO_THUMBNAIL
+    void MediaTransportControlUpdateThumbnail();
+#endif
+    afx_msg LRESULT OnSmtcSeek(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnSmtcAutoRepeat(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnSmtcShuffle(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnSmtcRate(WPARAM wParam, LPARAM lParam);
+    ULONGLONG m_lastSMTCTimelineUpdate = 0;
+#if MPC_SMTC_VIDEO_THUMBNAIL
+    ULONGLONG m_nextSMTCThumbnailUpdate = 0;
+    ULONGLONG m_lastSMTCThumbnailTick = 0;
+#endif
 
     enum themableDialogTypes {
         None,

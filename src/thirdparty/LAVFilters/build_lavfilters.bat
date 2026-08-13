@@ -77,7 +77,7 @@ IF NOT EXIST "!MPCHC_VS_PATH!" (
   GOTO MissingVar
 )
 
-SET "TOOLSET=!MPCHC_VS_PATH!\VC\Auxiliary\Build\vcvarsall.bat"
+SET "TOOLSET=!MPCHC_VS_PATH!\Common7\Tools\vsdevcmd"
 IF NOT EXIST "%TOOLSET%" (
   ECHO ERROR: Visual Studio tool path invalid
   GOTO MissingVar
@@ -99,11 +99,8 @@ GOTO End
 :Main
 IF %ERRORLEVEL% NEQ 0 EXIT /B
 
-IF /I "%ARCH%" == "x86" (
-  CALL "%TOOLSET%" x86 %MPCHC_WINSDK_VER% -vcvars_ver=14.41
-) ELSE (
-  CALL "%TOOLSET%" x64 %MPCHC_WINSDK_VER% -vcvars_ver=14.41
-)
+IF /I "%ARCH%" == "x86" (SET TOOLSETARCH=x86) ELSE (SET TOOLSETARCH=amd64)
+CALL "%TOOLSET%" -no_logo -arch=%TOOLSETARCH%
 
 SET START_TIME=%TIME%
 SET START_DATE=%DATE%
@@ -150,9 +147,34 @@ PUSHD src
 REM Build LAVFilters
 IF /I "%ARCH%" == "x86" (SET "ARCHVS=Win32") ELSE (SET "ARCHVS=x64")
 
-MSBuild.exe LAVFilters.sln /nologo /consoleloggerparameters:Verbosity=minimal /nodeReuse:false /m:1 /t:%BUILDTYPE% /property:Configuration=%RELEASETYPE%;Platform=%ARCHVS%;PlatformToolset=v143;VCToolsVersion=14.41.34120
+REM VS 2026 runs on systems whose active code page may not match the
+REM Windows-1252 encoding used by legacy LAV source files. It also defaults
+REM the old Quick Sync project to v100, and its MSBuild mishandles quoted
+REM xcopy destinations ending in a backslash in libbluray's post-build event.
+SET "CL=/source-charset:windows-1252 %CL%"
+SET "LAV_MSBUILD_FIXES="
+IF "%VisualStudioVersion%" == "18.0" SET "LAV_MSBUILD_FIXES=/property:PlatformToolset=v143;PostBuildEventUseInBuild=false"
+
+IF "%VisualStudioVersion%" == "18.0" IF /I "%BUILDTYPE%" == "Build" (
+  MSBuild.exe libbluray\libbluray.vcxproj /nologo /consoleloggerparameters:Verbosity=minimal /nodeReuse:true /m /t:Build /property:Configuration=%RELEASETYPE%;Platform=%ARCHVS% %LAV_MSBUILD_FIXES%
+  IF !ERRORLEVEL! NEQ 0 (
+    CALL "%COMMON%" :SubMsg "ERROR" "Building libbluray for VS 2026 failed!"
+    EXIT /B 1
+  )
+
+  IF /I "%RELEASETYPE%" == "Debug" (SET "LAV_OUTPUT=bin_%ARCHVS%d") ELSE (SET "LAV_OUTPUT=bin_%ARCHVS%")
+  IF NOT EXIST "!LAV_OUTPUT!\lib" MD "!LAV_OUTPUT!\lib"
+  COPY /Y "libbluray\!LAV_OUTPUT!\libbluray\libbluray.dll" "!LAV_OUTPUT!\libbluray.dll" >NUL
+  COPY /Y "libbluray\!LAV_OUTPUT!\libbluray\libbluray.lib" "!LAV_OUTPUT!\lib\libbluray.lib" >NUL
+  IF !ERRORLEVEL! NEQ 0 (
+    CALL "%COMMON%" :SubMsg "ERROR" "Copying libbluray outputs for VS 2026 failed!"
+    EXIT /B 1
+  )
+)
+
+MSBuild.exe LAVFilters.sln /nologo /consoleloggerparameters:Verbosity=minimal /nodeReuse:true /m /t:%BUILDTYPE% /property:Configuration=%RELEASETYPE%;Platform=%ARCHVS% %LAV_MSBUILD_FIXES%
 IF %ERRORLEVEL% NEQ 0 (
-  CALL "%COMMON%" :SubMsg "ERROR" "'MSBuild.exe LAVFilters.sln /nologo /consoleloggerparameters:Verbosity=minimal /nodeReuse:false /m:1 /t:%BUILDTYPE% /property:Configuration=%RELEASETYPE%;Platform=%ARCHVS%;PlatformToolset=v143;VCToolsVersion=14.41.34120' failed!"
+  CALL "%COMMON%" :SubMsg "ERROR" "LAVFilters.sln %RELEASETYPE% %ARCHVS% build failed!"
   EXIT /B
 )
 

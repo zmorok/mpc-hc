@@ -1094,14 +1094,14 @@ void CPPageAccelTbl::GetCustomTextColors(INT_PTR nItem, int iSubItem, COLORREF& 
         || iSubItem == COL_KEY && (dup & DUP_KEY)
         || iSubItem == COL_APPCMD && (dup & DUP_APPCMD)
         || iSubItem == COL_RMCMD && (dup & DUP_RMCMD)) {
-        if (AppIsThemeLoaded()) {
+        if (AppNeedsThemedControls()) {
             clrTextBk = CMPCTheme::ListCtrlErrorColor;
             overrideSelectedBG = true;
         } else {
             clrTextBk = RGB(255, 130, 120);
         }
     } else {
-        if (AppIsThemeLoaded()) {
+        if (AppNeedsThemedControls()) {
             clrTextBk = CMPCTheme::ContentBGColor;
         } else {
             clrTextBk = GetSysColor(COLOR_WINDOW);
@@ -1115,7 +1115,7 @@ void CPPageAccelTbl::GetCustomGridColors(int nItem, COLORREF& horzGridColor, COL
 }
 
 void CPPageAccelTbl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult) {
-    //this custom draw is used only in classic mode
+    //this custom draw is used in classic and light modes; dark draws via CMPCThemePlayerListCtrl
     *pResult = CDRF_DODEFAULT;
     if (!AppNeedsThemedControls()) {
         NMLVCUSTOMDRAW* pLVCD = reinterpret_cast<NMLVCUSTOMDRAW*>(pNMHDR);
@@ -1383,20 +1383,14 @@ HBRUSH CPPageAccelTbl::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
     HBRUSH hbr = __super::OnCtlColor(pDC, pWnd, nCtlColor);
 
-    const CAppSettings& s = AfxGetAppSettings();
-    if (AppIsThemeLoaded()) {
-        return hbr; //should have already been handled inside themed ctlcolor
-    }
-    int status = -1;
-
     if (*pWnd == m_WinLircEdit) {
-        status = s.WinLircClient.GetStatus();
-    }
-
-    if (status == 0 || status == 2 && (m_counter & 1)) {
-        pDC->SetTextColor(0x0000ff);
-    } else if (status == 1) {
-        pDC->SetTextColor(0x008000);
+        //must be applied after the base handler, which sets the default text color for every control on the page
+        int status = AfxGetAppSettings().WinLircClient.GetStatus();
+        if (status == 0 || (status == 2 && (m_counter & 1))) {
+            pDC->SetTextColor(RGB(255, 0, 0));
+        } else if (status == 1) {
+            pDC->SetTextColor(RGB(0, 128, 0));
+        }
     }
 
     return hbr;
