@@ -183,7 +183,7 @@ BOOL CPPageTheme::OnInitDialog()
     m_TimeOnSeekBar.AddString(ResStr(IDS_TIME_ON_SEEKBAR_ALWAYS));
     m_TimeOnSeekBar.AddString(ResStr(IDS_TIME_ON_SEEKBAR_WHEN_STATUSBAR_HIDDEN));
     m_TimeOnSeekBar.SetCurSel(s.nTimeOnSeekBar);
-    m_TimeOnSeekBar.SetDroppedWidth(200); // the longest option is wider than the combo field
+    CorrectComboListWidth(m_TimeOnSeekBar); // the longest option is wider than the combo field
 
     m_nOSDSize = s.nOSDSize;
     m_strOSDFont = s.strOSDFont;
@@ -440,6 +440,6 @@ void CPPageTheme::AdjustDynamicWidgets() {
     AdjustDynamicWidgetPair(this, IDC_STATIC5, IDC_COMBO2);
     AdjustDynamicWidgetPair(this, IDC_STATIC11, IDC_COMBO3);
     AdjustDynamicWidgetPair(this, IDC_STATIC7, IDC_EDIT4);
-    AdjustDynamicWidgetPair(this, IDC_STATIC6, IDC_COMBO5);
+    AdjustDynamicWidgetPair(this, IDC_STATIC6, IDC_COMBO5, true);
     AdjustDynamicWidgetPair(this, IDC_STATIC23, IDC_COMBO6);
 }
