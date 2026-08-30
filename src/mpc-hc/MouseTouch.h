@@ -64,7 +64,7 @@ private:
     ULONGLONG m_dwMouseHiderStartTick;
     bool m_bTrackingMouseLeave;
     enum class Drag { NO_DRAG, BEGIN_DRAG, DRAGGED } m_drag;
-    enum class Cursor { NONE, ARROW, HAND };
+    enum class Cursor { NONE, ARROW, HAND, PAN };
     std::map<Cursor, HCURSOR> m_cursors;
     Cursor m_cursor;
     CPoint m_beginDragPoint;
@@ -78,6 +78,9 @@ private:
     int m_popupMenuUninitTime;
     int m_doubleclicktime;
     bool m_bWaitingRButtonUp = false;
+    bool m_bVideoPan = false;
+    bool m_bVideoPanMoved = false;
+    CPoint m_videoPanLastPoint;
 
     std::pair<bool, CPoint> m_switchingToFullscreen;
 

@@ -2831,6 +2831,9 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
                 SeekTo(queuedSeek.rtPos, queuedSeek.bShowOSD);
             }
             break;
+        case TIMER_VIDEO_ZOOM_ANIMATION:
+            OnInteractiveVideoZoomTimer();
+            break;
         default:
             if (nIDEvent >= TIMER_ONETIME_START && nIDEvent <= TIMER_ONETIME_END) {
                 m_timerOneTime.NotifySubscribers(nIDEvent);
@@ -4684,6 +4687,10 @@ LRESULT CMainFrame::OnOpenMediaFailed(WPARAM wParam, LPARAM lParam)
 
 void CMainFrame::OnFilePostClosemedia(bool bNextIsQueued/* = false*/)
 {
+    StopInteractiveVideoZoomAnimation();
+    m_bInteractiveVideoTransformReady = false;
+    m_bInteractiveVideoPanning = false;
+
     SetPlaybackMode(PM_NONE);
     SetLoadState(MLS::CLOSED);
 
@@ -9073,6 +9080,7 @@ void CMainFrame::OnViewModifySize(UINT nID) {
 
 void CMainFrame::OnViewDefaultVideoFrame(UINT nID)
 {
+    StopInteractiveVideoZoomAnimation();
     AfxGetAppSettings().iDefaultVideoSize = nID - ID_VIEW_VF_HALF;
     m_ZoomX = m_ZoomY = 1;
     m_PosX = m_PosY = 0.5;
@@ -9093,6 +9101,7 @@ void CMainFrame::OnUpdateViewDefaultVideoFrame(CCmdUI* pCmdUI)
 
 void CMainFrame::OnViewSwitchVideoFrame()
 {
+    StopInteractiveVideoZoomAnimation();
     CAppSettings& s = AfxGetAppSettings();
 
     int vs = s.iDefaultVideoSize;
@@ -9151,6 +9160,7 @@ void CMainFrame::OnUpdateViewCompMonDeskARDiff(CCmdUI* pCmdUI)
 
 void CMainFrame::OnViewPanNScan(UINT nID)
 {
+    StopInteractiveVideoZoomAnimation();
     if (GetLoadState() != MLS::LOADED) {
         return;
     }
@@ -9279,6 +9289,7 @@ void CMainFrame::ApplyPanNScanPresetString()
 
 void CMainFrame::OnViewPanNScanPresets(UINT nID)
 {
+    StopInteractiveVideoZoomAnimation();
     if (GetLoadState() != MLS::LOADED) {
         return;
     }
@@ -13302,8 +13313,262 @@ void CMainFrame::AutoChangeMonitorMode()
     SetDispMode(s.strFullScreenMonitorID, s.autoChangeFSMode.modes[0].dm, s.fAudioTimeShift ? s.iAudioTimeShift : 0); // Restore default time shift
 }
 
+bool CMainFrame::CanUseInteractiveVideoTransform(const CWnd& sourceWnd)
+{
+    if (!m_bInteractiveVideoTransformReady || !m_pVideoWnd || sourceWnd.m_hWnd != m_pVideoWnd->m_hWnd
+            || GetLoadState() != MLS::LOADED || m_fAudioOnly
+            || AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR) {
+        return false;
+    }
+
+    const OAFilterState state = GetMediaState();
+    return state == State_Running || state == State_Paused;
+}
+
+bool CMainFrame::IsPointOnInteractiveVideo(const CPoint& clientPoint) const
+{
+    CRect visibleVideoRect;
+    visibleVideoRect.IntersectRect(&m_interactiveVideoViewportRect, &m_interactiveVideoRect);
+    return !visibleVideoRect.IsRectEmpty() && visibleVideoRect.PtInRect(clientPoint);
+}
+
+double CMainFrame::GetInteractiveVideoVerticalOffset(double scaledHeight) const
+{
+    const double viewportHeight = m_interactiveVideoViewportRect.Height();
+    if (viewportHeight <= scaledHeight) {
+        return 0.0;
+    }
+
+    const auto alignment = AfxGetAppSettings().iVerticalAlignVideo;
+    if (alignment == CAppSettings::verticalAlignVideoType::ALIGN_TOP) {
+        return -(viewportHeight - scaledHeight) / 2.0;
+    }
+    if (alignment == CAppSettings::verticalAlignVideoType::ALIGN_BOTTOM) {
+        return (viewportHeight - scaledHeight) / 2.0;
+    }
+    return 0.0;
+}
+
+void CMainFrame::ClampInteractiveVideoOrigin(double width, double height, double& left, double& top) const
+{
+    const double viewportWidth = m_interactiveVideoViewportRect.Width();
+    const double viewportHeight = m_interactiveVideoViewportRect.Height();
+
+    if (width >= viewportWidth) {
+        left = std::clamp(left, m_interactiveVideoViewportRect.right - width,
+                         static_cast<double>(m_interactiveVideoViewportRect.left));
+    } else {
+        left = std::clamp(left, static_cast<double>(m_interactiveVideoViewportRect.left),
+                         m_interactiveVideoViewportRect.right - width);
+    }
+
+    if (height >= viewportHeight) {
+        top = std::clamp(top, m_interactiveVideoViewportRect.bottom - height,
+                        static_cast<double>(m_interactiveVideoViewportRect.top));
+    } else {
+        top = std::clamp(top, static_cast<double>(m_interactiveVideoViewportRect.top),
+                        m_interactiveVideoViewportRect.bottom - height);
+    }
+}
+
+void CMainFrame::InteractiveVideoPositionToOrigin(double width, double height, double posX, double posY,
+                                                   double& left, double& top) const
+{
+    const double viewportWidth = m_interactiveVideoViewportRect.Width();
+    const double viewportHeight = m_interactiveVideoViewportRect.Height();
+
+    if (width <= 2.5 * viewportWidth) {
+        left = posX * (3.0 * viewportWidth - width) - viewportWidth;
+    } else {
+        left = ((1.5 - posX) * (viewportWidth - width)) / 2.0;
+    }
+
+    if (height <= 2.5 * viewportHeight) {
+        top = posY * (3.0 * viewportHeight - height) - viewportHeight
+            + GetInteractiveVideoVerticalOffset(height);
+    } else {
+        top = ((1.5 - posY) * (viewportHeight - height)) / 2.0
+            + GetInteractiveVideoVerticalOffset(height);
+    }
+}
+
+void CMainFrame::InteractiveVideoOriginToPosition(double width, double height, double left, double top,
+                                                   double& posX, double& posY) const
+{
+    const double viewportWidth = m_interactiveVideoViewportRect.Width();
+    const double viewportHeight = m_interactiveVideoViewportRect.Height();
+
+    if (width <= 2.5 * viewportWidth) {
+        posX = (left + viewportWidth) / (3.0 * viewportWidth - width);
+    } else {
+        posX = 1.5 - 2.0 * left / (viewportWidth - width);
+    }
+
+    const double topWithoutAlignment = top - GetInteractiveVideoVerticalOffset(height);
+    if (height <= 2.5 * viewportHeight) {
+        posY = (topWithoutAlignment + viewportHeight) / (3.0 * viewportHeight - height);
+    } else {
+        posY = 1.5 - 2.0 * topWithoutAlignment / (viewportHeight - height);
+    }
+
+}
+
+void CMainFrame::StopInteractiveVideoZoomAnimation()
+{
+    if (m_bInteractiveVideoZoomAnimating) {
+        KillTimer(TIMER_VIDEO_ZOOM_ANIMATION);
+        m_bInteractiveVideoZoomAnimating = false;
+    }
+}
+
+void CMainFrame::OnInteractiveVideoZoomTimer()
+{
+    if (!m_bInteractiveVideoZoomAnimating || !m_pVideoWnd || !CanUseInteractiveVideoTransform(*m_pVideoWnd)) {
+        StopInteractiveVideoZoomAnimation();
+        return;
+    }
+
+    constexpr double referenceFrameMs = 16.0;
+    constexpr double referenceFrameFactor = 0.22;
+    constexpr double maxElapsedMs = 50.0;
+    const ULONGLONG currentTick = GetTickCount64();
+    const double elapsedMs = std::clamp(static_cast<double>(currentTick - m_interactiveVideoZoomLastTick),
+                                        1.0, maxElapsedMs);
+    m_interactiveVideoZoomLastTick = currentTick;
+
+    // Frame-rate-independent exponential smoothing. 0.22 per 16 ms matches the
+    // reference viewer while avoiding jumps when the UI timer is delivered late.
+    const double interpolationFactor = 1.0 - std::pow(1.0 - referenceFrameFactor,
+                                                       elapsedMs / referenceFrameMs);
+    m_ZoomX += (m_dInteractiveVideoZoomTarget - m_ZoomX) * interpolationFactor;
+    m_ZoomY += (m_dInteractiveVideoZoomTarget - m_ZoomY) * interpolationFactor;
+    m_dInteractiveVideoLeft += (m_dInteractiveVideoLeftTarget - m_dInteractiveVideoLeft) * interpolationFactor;
+    m_dInteractiveVideoTop += (m_dInteractiveVideoTopTarget - m_dInteractiveVideoTop) * interpolationFactor;
+
+    const bool zoomDone = std::abs(m_dInteractiveVideoZoomTarget - m_ZoomX) < 0.001
+                       && std::abs(m_dInteractiveVideoZoomTarget - m_ZoomY) < 0.001;
+    const bool positionDone = std::abs(m_dInteractiveVideoLeftTarget - m_dInteractiveVideoLeft) < 0.1
+                           && std::abs(m_dInteractiveVideoTopTarget - m_dInteractiveVideoTop) < 0.1;
+    if (zoomDone && positionDone) {
+        m_ZoomX = m_ZoomY = m_dInteractiveVideoZoomTarget;
+        m_dInteractiveVideoLeft = m_dInteractiveVideoLeftTarget;
+        m_dInteractiveVideoTop = m_dInteractiveVideoTopTarget;
+        StopInteractiveVideoZoomAnimation();
+    }
+
+    const double width = m_dInteractiveVideoBaseWidth * m_ZoomX;
+    const double height = m_dInteractiveVideoBaseHeight * m_ZoomY;
+    ClampInteractiveVideoOrigin(width, height, m_dInteractiveVideoLeft, m_dInteractiveVideoTop);
+    InteractiveVideoOriginToPosition(width, height, m_dInteractiveVideoLeft, m_dInteractiveVideoTop, m_PosX, m_PosY);
+    MoveVideoWindow();
+}
+
+bool CMainFrame::HandleInteractiveVideoZoom(CWnd& sourceWnd, const CPoint& screenPoint, short zDelta)
+{
+    if (!zDelta || !CanUseInteractiveVideoTransform(sourceWnd)
+            || m_dInteractiveVideoBaseWidth <= 0.0 || m_dInteractiveVideoBaseHeight <= 0.0) {
+        return false;
+    }
+
+    CPoint clientPoint(screenPoint);
+    sourceWnd.ScreenToClient(&clientPoint);
+    if (!IsPointOnInteractiveVideo(clientPoint)) {
+        return false;
+    }
+
+    constexpr double minZoom = 1.0;
+    constexpr double maxZoom = 10.0;
+    constexpr double zoomPerWheelStep = 1.2;
+
+    const double baseTarget = m_bInteractiveVideoZoomAnimating
+            ? m_dInteractiveVideoZoomTarget
+            : std::max({ minZoom, m_ZoomX, m_ZoomY });
+    const double targetZoom = std::clamp(baseTarget * std::pow(zoomPerWheelStep,
+                                                static_cast<double>(zDelta) / WHEEL_DELTA), minZoom, maxZoom);
+
+    const bool animationWasActive = m_bInteractiveVideoZoomAnimating;
+    const double sourceZoom = animationWasActive ? m_dInteractiveVideoZoomTarget : std::max(m_ZoomX, m_ZoomY);
+    const double sourceWidth = animationWasActive
+            ? m_dInteractiveVideoBaseWidth * sourceZoom
+            : m_interactiveVideoRect.Width();
+    const double sourceHeight = animationWasActive
+            ? m_dInteractiveVideoBaseHeight * sourceZoom
+            : m_interactiveVideoRect.Height();
+    const double sourceLeft = animationWasActive ? m_dInteractiveVideoLeftTarget : m_interactiveVideoRect.left;
+    const double sourceTop = animationWasActive ? m_dInteractiveVideoTopTarget : m_interactiveVideoRect.top;
+    if (sourceWidth <= 0.0 || sourceHeight <= 0.0) {
+        return false;
+    }
+
+    // While the wheel is moving, extend the existing destination instead of
+    // deriving the next anchor from an in-between frame. This prevents wobble.
+    const double anchorX = std::clamp((clientPoint.x - sourceLeft) / sourceWidth, 0.0, 1.0);
+    const double anchorY = std::clamp((clientPoint.y - sourceTop) / sourceHeight, 0.0, 1.0);
+    const double targetWidth = m_dInteractiveVideoBaseWidth * targetZoom;
+    const double targetHeight = m_dInteractiveVideoBaseHeight * targetZoom;
+    double targetLeft = clientPoint.x - anchorX * targetWidth;
+    double targetTop = clientPoint.y - anchorY * targetHeight;
+
+    if (targetZoom <= minZoom) {
+        InteractiveVideoPositionToOrigin(targetWidth, targetHeight, 0.5, 0.5, targetLeft, targetTop);
+    } else {
+        ClampInteractiveVideoOrigin(targetWidth, targetHeight, targetLeft, targetTop);
+    }
+
+    if (!animationWasActive) {
+        m_dInteractiveVideoLeft = m_interactiveVideoRect.left;
+        m_dInteractiveVideoTop = m_interactiveVideoRect.top;
+        m_interactiveVideoZoomLastTick = GetTickCount64();
+    }
+    m_dInteractiveVideoZoomTarget = targetZoom;
+    m_dInteractiveVideoLeftTarget = targetLeft;
+    m_dInteractiveVideoTopTarget = targetTop;
+    m_bInteractiveVideoZoomAnimating = true;
+    if (!animationWasActive) {
+        SetTimer(TIMER_VIDEO_ZOOM_ANIMATION, 16, nullptr);
+    }
+
+    CString osdMessage;
+    osdMessage.Format(IDS_OSD_ZOOM, targetZoom * 100.0);
+    m_OSD.DisplayMessage(OSD_TOPLEFT, osdMessage, 2000);
+    return true;
+}
+
+bool CMainFrame::BeginInteractiveVideoPan(CWnd& sourceWnd, const CPoint& clientPoint)
+{
+    if (!CanUseInteractiveVideoTransform(sourceWnd) || m_ZoomX <= 1.0 || m_ZoomY <= 1.0
+            || !IsPointOnInteractiveVideo(clientPoint)) {
+        return false;
+    }
+
+    StopInteractiveVideoZoomAnimation();
+    m_bInteractiveVideoPanning = true;
+    return true;
+}
+
+void CMainFrame::UpdateInteractiveVideoPan(CWnd& sourceWnd, const CSize& delta)
+{
+    if (!m_bInteractiveVideoPanning || !CanUseInteractiveVideoTransform(sourceWnd)) {
+        return;
+    }
+
+    const double width = m_interactiveVideoRect.Width();
+    const double height = m_interactiveVideoRect.Height();
+    double left = m_interactiveVideoRect.left + delta.cx;
+    double top = m_interactiveVideoRect.top + delta.cy;
+    ClampInteractiveVideoOrigin(width, height, left, top);
+    InteractiveVideoOriginToPosition(width, height, left, top, m_PosX, m_PosY);
+    MoveVideoWindow();
+}
+
+void CMainFrame::EndInteractiveVideoPan()
+{
+    m_bInteractiveVideoPanning = false;
+}
+
 void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVideoRect/* = false*/)
 {
+    m_bInteractiveVideoTransformReady = false;
     m_dLastVideoScaleFactor = 0;
     m_lastVideoSize.SetSize(0, 0);
 
@@ -13439,6 +13704,14 @@ void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVi
 
             ASSERT(videoRect.Width()  == lround(dScaledVRWidth));
             ASSERT(videoRect.Height() == lround(dScaledVRHeight));
+
+            if ((fs == State_Running || fs == State_Paused) && m_pVideoWnd) {
+                m_interactiveVideoViewportRect = windowRect;
+                m_interactiveVideoRect = videoRect;
+                m_dInteractiveVideoBaseWidth = dVRWidth;
+                m_dInteractiveVideoBaseHeight = dVRHeight;
+                m_bInteractiveVideoTransformReady = true;
+            }
 
             if (m_pMVRC) {
                 static constexpr const LPCWSTR madVRModesMap[] = {

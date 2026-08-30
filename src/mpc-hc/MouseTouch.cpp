@@ -43,6 +43,7 @@ CMouse::CMouse(CMainFrame* pMainFrm, bool bD3DFS/* = false*/)
     m_cursors[Cursor::NONE] = nullptr;
     m_cursors[Cursor::ARROW] = LoadCursor(nullptr, IDC_ARROW);
     m_cursors[Cursor::HAND] = LoadCursor(nullptr, IDC_HAND);
+    m_cursors[Cursor::PAN] = LoadCursor(nullptr, IDC_SIZEALL);
     ResetToBlankState();
 
     EventRouter::EventSelection evs;
@@ -119,6 +120,14 @@ bool CMouse::Dragging()
 
 void CMouse::ResetToBlankState()
 {
+    if (m_bVideoPan) {
+        m_pMainFrame->EndInteractiveVideoPan();
+        if (::GetCapture() == GetWnd().m_hWnd) {
+            ReleaseCapture();
+        }
+        m_bVideoPan = false;
+        m_bVideoPanMoved = false;
+    }
     StopMouseHider();
     m_bLeftDown = false;
     m_bTrackingMouseLeave = false;
@@ -247,6 +256,14 @@ void CMouse::EventCallback(MpcEvent ev)
             break;
         case MpcEvent::SWITCHING_TO_FULLSCREEN:
         case MpcEvent::SWITCHING_TO_FULLSCREEN_D3D:
+            if (m_bVideoPan) {
+                m_pMainFrame->EndInteractiveVideoPan();
+                if (::GetCapture() == GetWnd().m_hWnd) {
+                    ReleaseCapture();
+                }
+                m_bVideoPan = false;
+                m_bVideoPanMoved = false;
+            }
             m_switchingToFullscreen = std::make_pair(true, screenPoint);
         // no break
         case MpcEvent::MEDIA_LOADED:
@@ -455,6 +472,16 @@ void CMouse::InternalOnLButtonUp(UINT nFlags, const CPoint& point)
 // Middle button
 void CMouse::InternalOnMButtonDown(UINT nFlags, const CPoint& point)
 {
+    if (m_pMainFrame->BeginInteractiveVideoPan(GetWnd(), point)) {
+        m_bVideoPan = true;
+        m_bVideoPanMoved = false;
+        m_videoPanLastPoint = point;
+        GetWnd().SetCapture();
+        m_cursor = Cursor::PAN;
+        ::SetCursor(m_cursors[m_cursor]);
+        return;
+    }
+
     SetCursor(nFlags, point);
     //all mouse commands operate on UP
     //OnButton(wmcmd::MDOWN, point);
@@ -462,6 +489,21 @@ void CMouse::InternalOnMButtonDown(UINT nFlags, const CPoint& point)
 void CMouse::InternalOnMButtonUp(UINT nFlags, const CPoint& point)
 {
     m_bWaitingRButtonUp = false;
+
+    if (m_bVideoPan) {
+        m_pMainFrame->EndInteractiveVideoPan();
+        if (::GetCapture() == GetWnd().m_hWnd) {
+            ReleaseCapture();
+        }
+        m_bVideoPan = false;
+        if (!m_bVideoPanMoved) {
+            OnButton(wmcmd::MUP, point, nFlags);
+        }
+        m_bVideoPanMoved = false;
+        SetCursor(nFlags, point);
+        return;
+    }
+
     OnButton(wmcmd::MUP, point, nFlags);
     SetCursor(nFlags, point);
 }
@@ -518,6 +560,10 @@ bool CMouse::InternalOnXButtonDblClk(UINT nFlags, UINT nButton, const CPoint& po
 BOOL CMouse::InternalOnMouseWheel(UINT nFlags, short zDelta, const CPoint& point)
 {
     m_bWaitingRButtonUp = false;
+    if ((nFlags & MK_CONTROL) && m_pMainFrame->HandleInteractiveVideoZoom(GetWnd(), point, zDelta)) {
+        return TRUE;
+    }
+
     return zDelta > 0 ? OnButton(wmcmd::WUP, point, nFlags) :
            zDelta < 0 ? OnButton(wmcmd::WDOWN, point, nFlags) :
            FALSE;
@@ -649,6 +695,30 @@ void CMouse::InternalOnMouseMove(UINT nFlags, const CPoint& point)
 {
     CPoint screenPoint(point);
     GetWnd().ClientToScreen(&screenPoint);
+
+    if (m_bVideoPan) {
+        if (nFlags & MK_MBUTTON) {
+            const CSize delta(point.x - m_videoPanLastPoint.x, point.y - m_videoPanLastPoint.y);
+            if (delta.cx || delta.cy) {
+                m_pMainFrame->UpdateInteractiveVideoPan(GetWnd(), delta);
+                m_videoPanLastPoint = point;
+                m_bVideoPanMoved = true;
+            }
+            m_cursor = Cursor::PAN;
+            ::SetCursor(m_cursors[m_cursor]);
+        } else {
+            m_pMainFrame->EndInteractiveVideoPan();
+            if (::GetCapture() == GetWnd().m_hWnd) {
+                ReleaseCapture();
+            }
+            m_bVideoPan = false;
+            m_bVideoPanMoved = false;
+            SetCursor(nFlags, screenPoint, point);
+        }
+
+        m_pMainFrame->UpdateControlState(CMainFrame::UPDATE_CONTROLS_VISIBILITY);
+        return;
+    }
 
     if (!TestDrag(screenPoint) && !m_pMainFrame->IsInteractiveVideo()) {
         if (!m_bTrackingMouseLeave) {

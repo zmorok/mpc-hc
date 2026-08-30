@@ -224,6 +224,7 @@ private:
         TIMER_HIDER,
         TIMER_WINDOW_FULLSCREEN,
         TIMER_DELAYEDSEEK,
+        TIMER_VIDEO_ZOOM_ANIMATION,
         TIMER_ONETIME_START,
         TIMER_ONETIME_END = TIMER_ONETIME_START + 127,
     };
@@ -609,6 +610,15 @@ public:
     CControlBar* m_pLastBar;
 
 protected:
+    bool CanUseInteractiveVideoTransform(const CWnd& sourceWnd);
+    bool IsPointOnInteractiveVideo(const CPoint& clientPoint) const;
+    double GetInteractiveVideoVerticalOffset(double scaledHeight) const;
+    void ClampInteractiveVideoOrigin(double width, double height, double& left, double& top) const;
+    void InteractiveVideoPositionToOrigin(double width, double height, double posX, double posY, double& left, double& top) const;
+    void InteractiveVideoOriginToPosition(double width, double height, double left, double top, double& posX, double& posY) const;
+    void StopInteractiveVideoZoomAnimation();
+    void OnInteractiveVideoZoomTimer();
+
     bool m_bUseSeekPreview;
     bool m_bFirstPlay;
     bool m_bOpeningInAutochangedMonitorMode;
@@ -629,6 +639,19 @@ protected:
 
     double m_dSpeedRate;
     double m_ZoomX, m_ZoomY, m_PosX, m_PosY;
+    bool m_bInteractiveVideoTransformReady = false;
+    CRect m_interactiveVideoViewportRect;
+    CRect m_interactiveVideoRect;
+    double m_dInteractiveVideoBaseWidth = 0.0;
+    double m_dInteractiveVideoBaseHeight = 0.0;
+    bool m_bInteractiveVideoZoomAnimating = false;
+    ULONGLONG m_interactiveVideoZoomLastTick = 0;
+    double m_dInteractiveVideoZoomTarget = 1.0;
+    double m_dInteractiveVideoLeft = 0.0;
+    double m_dInteractiveVideoTop = 0.0;
+    double m_dInteractiveVideoLeftTarget = 0.0;
+    double m_dInteractiveVideoTopTarget = 0.0;
+    bool m_bInteractiveVideoPanning = false;
     int m_AngleX, m_AngleY, m_AngleZ;
     int m_iDefRotation;
 
@@ -724,6 +747,10 @@ public:
     void ToggleFullscreen(bool fToNearest, bool fSwitchScreenResWhenHasTo);
     void ToggleD3DFullscreen(bool fSwitchScreenResWhenHasTo);
     void MoveVideoWindow(bool fShowStats = false, bool bSetStoppedVideoRect = false);
+    bool HandleInteractiveVideoZoom(CWnd& sourceWnd, const CPoint& screenPoint, short zDelta);
+    bool BeginInteractiveVideoPan(CWnd& sourceWnd, const CPoint& clientPoint);
+    void UpdateInteractiveVideoPan(CWnd& sourceWnd, const CSize& delta);
+    void EndInteractiveVideoPan();
     void SetPreviewVideoPosition();
 
     void RepaintVideo(const bool bForceRepaint = false);
