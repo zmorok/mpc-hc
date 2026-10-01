@@ -14,11 +14,15 @@
 #include "Translations.h"
 #include "ImageGrayer.h"
 #include "CMPCThemePropPageButton.h"
+#include "CMPCThemeMenu.h"
+#include "CMPCThemePropPageFrame.h"
 #include <dwmapi.h>
 #undef SubclassWindow
 
 using DLGTEMPLATEEX = _DialogSplitHelper::DLGTEMPLATEEX;
 using DLGITEMTEMPLATEEX = _DialogSplitHelper::DLGITEMTEMPLATEEX;
+
+const UINT CMPCThemeUtil::WM_MPCTHEMECHANGED = RegisterWindowMessage(_T("MPC-HC Theme Changed"));
 
 CBrush CMPCThemeUtil::contentBrush;
 CBrush CMPCThemeUtil::windowBrush;
@@ -988,7 +992,76 @@ inline void FastFrameRect(CDC* pDC, const CRect& rect, COLORREF color) {
     pDC->FillSolidRect(rect.right - 1, rect.top, 1, rect.Height(), color);
 }
 
-void CMPCThemeUtil::drawCheckBoxInternal(UINT checkState, bool isHover, bool useSystemSize, CRect rectCheck, CDC* pDC, bool isRadio, CPngImage* image, int size) {
+//windows 11 style: a fluent check box or radio, drawn instead of the windows 10 images, which exist because windows 10
+//had no clean way to draw dark ones. it keeps the image's size for this dpi, so the gap to the label is unchanged
+static void drawFluentCheckOrRadio(UINT checkState, bool isHover, CRect rect, CDC* pDC, bool isRadio, int size, bool isDisabled) {
+    const int side = (std::min)({ size > 0 ? size : INT_MAX, rect.Width(), rect.Height() });
+    CRect box(CPoint(rect.left, rect.top + (rect.Height() - side) / 2), CSize(side, side));
+
+    //the top left pixel lies outside both the rounded box and the circle, so it holds the background. repaint the square
+    //with it first, or antialiased edges drawn over the previous frame would darken with every repaint
+    COLORREF bg = pDC->GetPixel(box.left, box.top);
+    if (bg != CLR_INVALID) {
+        pDC->FillSolidRect(box, bg);
+    }
+
+    const bool on = checkState != BST_UNCHECKED;
+    auto gdip = [](COLORREF c) { return Gdiplus::Color(GetRValue(c), GetGValue(c), GetBValue(c)); };
+    Gdiplus::Graphics gfx(pDC->m_hDC);
+    gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias8x8);
+    gfx.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf); //pixel edges on whole coordinates, or the stroke straddles two rows and the bottom one is cut
+
+    const Gdiplus::REAL x = (Gdiplus::REAL)box.left, y = (Gdiplus::REAL)box.top, d = (Gdiplus::REAL)side;
+    const Gdiplus::REAL half = 0.5f, inner = d - 1.0f; //1px stroke centred on the pixel grid
+    COLORREF fillClr, borderClr, glyphClr;
+    if (isDisabled) {
+        fillClr = on ? CMPCTheme::CheckboxDisabledCheckedColor : CMPCTheme::WindowBGColor;
+        borderClr = on ? CMPCTheme::CheckboxDisabledCheckedColor : CMPCTheme::CheckboxDisabledBorderColor;
+        glyphClr = CMPCTheme::CheckboxDisabledGlyphColor;
+    } else {
+        fillClr = on ? CMPCTheme::CheckboxCheckedColor : isHover ? CMPCTheme::CheckboxBGHoverColor : CMPCTheme::CheckboxBGColor;
+        borderClr = on ? CMPCTheme::CheckboxCheckedColor : isHover ? CMPCTheme::CheckboxBorderHoverColor : CMPCTheme::CheckboxBorderColor;
+        glyphClr = CMPCTheme::CheckboxGlyphColor;
+    }
+    Gdiplus::SolidBrush fill(gdip(fillClr));
+    Gdiplus::Pen border(gdip(borderClr), 1.0f);
+    Gdiplus::Pen glyph(gdip(glyphClr), (std::max)(1.3f, d * 0.11f));
+    glyph.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+    glyph.SetLineJoin(Gdiplus::LineJoinRound);
+
+    if (isRadio) {
+        gfx.FillEllipse(&fill, x + half, y + half, inner, inner);
+        gfx.DrawEllipse(&border, x + half, y + half, inner, inner);
+        if (on) {
+            Gdiplus::SolidBrush dot(gdip(glyphClr));
+            const Gdiplus::REAL dd = d * 0.42f;
+            gfx.FillEllipse(&dot, x + (d - dd) / 2, y + (d - dd) / 2, dd, dd);
+        }
+    } else {
+        const Gdiplus::REAL e = 2 * (std::max)(2.0f, d * 0.2f); //corner diameter; fluent rounds a 20px box by 4px
+        const Gdiplus::REAL l = x + half, t = y + half;
+        Gdiplus::GraphicsPath path;
+        path.AddArc(l, t, e, e, 180, 90);
+        path.AddArc(l + inner - e, t, e, e, 270, 90);
+        path.AddArc(l + inner - e, t + inner - e, e, e, 0, 90);
+        path.AddArc(l, t + inner - e, e, e, 90, 90);
+        path.CloseFigure();
+        gfx.FillPath(&fill, &path);
+        gfx.DrawPath(&border, &path);
+        if (checkState == BST_CHECKED) {
+            Gdiplus::PointF pts[] = { { x + d * 0.25f, y + d * 0.52f }, { x + d * 0.43f, y + d * 0.70f }, { x + d * 0.76f, y + d * 0.33f } };
+            gfx.DrawLines(&glyph, pts, 3);
+        } else if (checkState == BST_INDETERMINATE) {
+            gfx.DrawLine(&glyph, x + d * 0.3f, y + d * 0.5f, x + d * 0.7f, y + d * 0.5f);
+        }
+    }
+}
+
+void CMPCThemeUtil::drawCheckBoxInternal(UINT checkState, bool isHover, bool useSystemSize, CRect rectCheck, CDC* pDC, bool isRadio, CPngImage* image, int size, bool isDisabled) {
+    if (CMPCTheme::isWindows11Style) {
+        drawFluentCheckOrRadio(checkState, isHover, rectCheck, pDC, isRadio, size, isDisabled);
+        return;
+    }
     COLORREF borderClr, bgClr;
     COLORREF oldBkClr = pDC->GetBkColor(), oldTextClr = pDC->GetTextColor();
     if (isHover) {
@@ -1061,7 +1134,7 @@ void CMPCThemeUtil::drawCheckBoxInternal(UINT checkState, bool isHover, bool use
     pDC->SetTextColor(oldTextClr);
 }
 
-void CMPCThemeUtil::drawCheckBox(CWnd* window, UINT checkState, bool isHover, bool useSystemSize, CRect rectCheck, CDC* pDC, bool isRadio /*= false*/, UINT resourceID /*= 0*/) {
+void CMPCThemeUtil::drawCheckBox(CWnd* window, UINT checkState, bool isHover, bool useSystemSize, CRect rectCheck, CDC* pDC, bool isRadio /*= false*/, UINT resourceID /*= 0*/, bool isDisabled /*= false*/) {
     struct ImageCache {
         CPngImage image;
         int size;
@@ -1080,18 +1153,39 @@ void CMPCThemeUtil::drawCheckBox(CWnd* window, UINT checkState, bool isHover, bo
         newCache.size = bm.bmHeight;
     }
 
-    drawCheckBoxInternal(checkState, isHover, useSystemSize, rectCheck, pDC, isRadio, &cache[resourceID].image, cache[resourceID].size);
+    drawCheckBoxInternal(checkState, isHover, useSystemSize, rectCheck, pDC, isRadio, &cache[resourceID].image, cache[resourceID].size, isDisabled);
 }
 
+//themed controls in dark mode on an os with the dark explorer theme: such windows get DarkMode_Explorer and the dark frame
 bool CMPCThemeUtil::canUseWin10DarkTheme()
 {
-    if (AppNeedsThemedControls()) {
+    if (AppNeedsThemedControls() && CMPCTheme::EffectiveThemeMode() == CMPCTheme::ModernThemeMode::DARK) {
         //        return false; //FIXME.  return false to test behavior for OS < Win10 1809
         RTL_OSVERSIONINFOW osvi = GetRealOSVersion();
-        bool ret = (osvi.dwMajorVersion = 10 && osvi.dwMajorVersion >= 0 && osvi.dwBuildNumber >= 17763); //dark theme first available in win 10 1809
+        bool ret = (osvi.dwMajorVersion >= 10 && osvi.dwBuildNumber >= 17763); //dark theme first available in win 10 1809
         return ret;
     }
     return false;
+}
+
+//the explorer visual style for the controls the theme dresses but does not fully draw (tree, list box, combo list, edit):
+//the dark one where canUseWin10DarkTheme, the light one where the light palette draws the controls (Windows 11 style),
+//and none where the controls are drawn without a visual style
+bool CMPCThemeUtil::canUseExplorerTheme()
+{
+    return canUseWin10DarkTheme() || (AppNeedsThemedControls() && CMPCTheme::EffectiveThemeMode() == CMPCTheme::ModernThemeMode::LIGHT);
+}
+
+LPCWSTR CMPCThemeUtil::explorerThemeName()
+{
+    return canUseWin10DarkTheme() ? L"DarkMode_Explorer" : canUseExplorerTheme() ? L"Explorer" : L"";
+}
+
+//the explorer style where the theme dresses the control, otherwise the default style back
+//(nullptr restores the default, where L"" would turn visual styles off)
+void CMPCThemeUtil::applyExplorerTheme(HWND hWnd)
+{
+    SetWindowTheme(hWnd, AppNeedsThemedControls() ? explorerThemeName() : nullptr, nullptr);
 }
 
 bool CMPCThemeUtil::IsBasicMode()
@@ -1172,6 +1266,111 @@ void CMPCThemeUtil::enableWindows10DarkFrame(CWnd* window)
     }
 }
 
+//unlike enableWindows10DarkFrame, this also turns the dark frame off, for windows that outlive a theme change
+void CMPCThemeUtil::refreshWindows10DarkFrame(HWND hWnd)
+{
+    RTL_OSVERSIONINFOW osvi = GetRealOSVersion();
+    if (osvi.dwMajorVersion < 10 || osvi.dwBuildNumber < 17763) {
+        return;
+    }
+    HMODULE hUser = GetModuleHandleA("user32.dll");
+    if (hUser) {
+        pfnSetWindowCompositionAttribute setWindowCompositionAttribute = (pfnSetWindowCompositionAttribute)GetProcAddress(hUser, "SetWindowCompositionAttribute");
+        if (setWindowCompositionAttribute) {
+            BOOL dark = canUseWin10DarkTheme();
+            WINDOWCOMPOSITIONATTRIBDATA data;
+            data.Attrib = WCA_USEDARKMODECOLORS;
+            data.pvData = &dark;
+            data.cbData = sizeof(dark);
+            setWindowCompositionAttribute(hWnd, &data);
+            //the attribute alone leaves a caption that was already dark as it is; dwm needs telling too
+            const DWORD DWMWA_USE_IMMERSIVE_DARK_MODE_19 = 19, DWMWA_USE_IMMERSIVE_DARK_MODE_20 = 20; //the value moved in windows 10 20h1
+            if (FAILED(DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE_20, &dark, sizeof(dark)))) {
+                DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE_19, &dark, sizeof(dark));
+            }
+            ::SetWindowPos(hWnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            //the caption is only repainted in the new colours on an activation change, so fake one;
+            //straight to DefWindowProc, as mfc keeps its own track of activation
+            BOOL active = ::GetForegroundWindow() == hWnd;
+            ::DefWindowProc(hWnd, WM_NCACTIVATE, !active, 0);
+            ::DefWindowProc(hWnd, WM_NCACTIVATE, active, 0);
+        }
+    }
+}
+
+//brushes created from the palette on first use; drop them so the next use picks up the new colours
+void CMPCThemeUtil::resetThemeCaches()
+{
+    contentBrush.DeleteObject();
+    windowBrush.DeleteObject();
+    controlAreaBrush.DeleteObject();
+    W10DarkThemeFileDialogInjectedBGBrush.DeleteObject();
+    if (AppIsThemeLoaded()) {
+        initHelperObjects();
+    }
+    CMPCThemeMenu::resetBrushes();
+    CMPCThemePropPageFrame::resetBrush();
+}
+
+static BOOL CALLBACK collectWindowProc(HWND hWnd, LPARAM lParam)
+{
+    reinterpret_cast<std::vector<HWND>*>(lParam)->push_back(hWnd);
+    return TRUE;
+}
+
+//tells every window of the ui thread that the theme changed, so the ones that set themselves up once at
+//creation (visual styles, colours handed to common controls, subclassed children) can do it again.
+//children hear it before their parents, so a parent can still override what a child picked for itself
+void CMPCThemeUtil::broadcastThemeChange()
+{
+    std::vector<HWND> topLevel;
+    ::EnumThreadWindows(GetCurrentThreadId(), collectWindowProc, (LPARAM)&topLevel);
+    for (HWND hWnd : topLevel) {
+        if (!::IsWindow(hWnd)) {
+            continue;
+        }
+        std::vector<HWND> windows = { hWnd };
+        ::EnumChildWindows(hWnd, collectWindowProc, (LPARAM)&windows); //parents come before their children
+        for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
+            if (::IsWindow(*it)) {
+                ::SendMessage(*it, WM_MPCTHEMECHANGED, 0, 0);
+            }
+        }
+        if (WS_CAPTION == (::GetWindowLong(hWnd, GWL_STYLE) & WS_CAPTION)) {
+            refreshWindows10DarkFrame(hWnd);
+        }
+        ::RedrawWindow(hWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+    }
+}
+
+void CMPCThemeUtil::applyNativeMenuMode()
+{
+    static bool applied = false;
+    bool nativeMenus = static_cast<CMPlayerCApp*>(AfxGetApp())->m_bNativeMenus;
+    if (!nativeMenus && !applied) {
+        return;
+    }
+    //undocumented uxtheme exports. native menus are only offered on windows 11, where these ordinals are stable
+    enum PreferredAppMode { Default, AllowDark, ForceDark, ForceLight };
+    typedef PreferredAppMode(WINAPI* pfnSetPreferredAppMode)(PreferredAppMode);
+    typedef void (WINAPI* pfnFlushMenuThemes)();
+    HMODULE hUxtheme = GetModuleHandleW(L"uxtheme.dll");
+    if (hUxtheme) {
+        pfnSetPreferredAppMode setPreferredAppMode = (pfnSetPreferredAppMode)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(135));
+        pfnFlushMenuThemes flushMenuThemes = (pfnFlushMenuThemes)GetProcAddress(hUxtheme, MAKEINTRESOURCEA(136));
+        if (setPreferredAppMode && flushMenuThemes) {
+            if (nativeMenus) {
+                //force rather than allow, so menus follow the player theme even when it differs from the os
+                setPreferredAppMode(CMPCTheme::EffectiveThemeMode() == CMPCTheme::ModernThemeMode::DARK ? ForceDark : ForceLight);
+            } else { //turned off since, so hand the menus back to the os
+                setPreferredAppMode(Default);
+            }
+            flushMenuThemes();
+            applied = nativeMenus;
+        }
+    }
+}
+
 int CALLBACK PropSheetCallBackRTL(HWND hWnd, UINT message, LPARAM lParam) {
     switch (message) {
     case PSCB_PRECREATE:
@@ -1226,82 +1425,123 @@ CPoint CMPCThemeUtil::GetClientRectOffset(CWnd* window) {
     return offset;
 }
 
+namespace {
+    struct DynamicWidgetRow {
+        CWnd* leftW;
+        CWnd* rightW;
+        CMPCThemeUtil::WidgetPairType lType;
+        CMPCThemeUtil::WidgetPairType rType;
+        CRect l, r;
+        LONG leftWantsRight, rightWantsLeft;
+    };
+
+    bool MeasureDynamicWidgetRow(CWnd* window, int leftWidget, int rightWidget, DpiHelper& dpiWindow, DynamicWidgetRow& row) {
+        CWnd* leftW = window->GetDlgItem(leftWidget);
+        CWnd* rightW = window->GetDlgItem(rightWidget);
+        if (!leftW || !rightW || !IsWindow(leftW->m_hWnd) || !IsWindow(rightW->m_hWnd)) {
+            return false;
+        }
+        row.leftW = leftW;
+        row.rightW = rightW;
+
+        // Always auto-detect left widget type
+        LRESULT lRes = leftW->SendMessage(WM_GETDLGCODE, 0, 0);
+        DWORD buttonType = (leftW->GetStyle() & BS_TYPEMASK);
+
+        if (DLGC_BUTTON == (lRes & DLGC_BUTTON) && (buttonType == BS_CHECKBOX || buttonType == BS_AUTOCHECKBOX)) {
+            row.lType = CMPCThemeUtil::WidgetPairCheckBox;
+        } else { //we only support checkbox or text on the left, just assume it's text now
+            row.lType = CMPCThemeUtil::WidgetPairText;
+        }
+
+        // Always auto-detect right widget type
+        TCHAR windowClass[MAX_PATH];
+        ::GetClassName(rightW->GetSafeHwnd(), windowClass, _countof(windowClass));
+
+        if (0 == _tcsicmp(windowClass, WC_COMBOBOX)) {
+            row.rType = CMPCThemeUtil::WidgetPairCombo;
+        } else { //we only support combo or edit on the right, just assume it's edit now
+            row.rType = CMPCThemeUtil::WidgetPairEdit;
+        }
+
+        leftW->GetWindowRect(row.l);
+        leftW->GetOwner()->ScreenToClient(row.l);
+        rightW->GetWindowRect(row.r);
+        rightW->GetOwner()->ScreenToClient(row.r);
+        row.leftWantsRight = row.l.right;
+        row.rightWantsLeft = row.r.left;
+        {
+            CDC* lpDC = leftW->GetDC();
+            CFont* pFont = leftW->GetFont();
+            int left = row.l.left;
+            if (row.lType == CMPCThemeUtil::WidgetPairCheckBox) {
+                left += dpiWindow.GetSystemMetricsDPI(SM_CXMENUCHECK) + 2;
+            }
+
+            CFont* pOldFont = lpDC->SelectObject(pFont);
+            TEXTMETRIC tm;
+            lpDC->GetTextMetricsW(&tm);
+
+            CString str;
+            leftW->GetWindowTextW(str);
+            CSize szText = lpDC->GetTextExtent(str);
+            lpDC->SelectObject(pOldFont);
+
+            row.leftWantsRight = left + szText.cx + tm.tmAveCharWidth;
+            leftW->ReleaseDC(lpDC);
+        }
+
+        if (row.rType == CMPCThemeUtil::WidgetPairCombo) {
+            //int wantWidth = (int)::SendMessage(rightW->m_hWnd, CB_GETDROPPEDWIDTH, 0, 0);
+            CComboBox* cb = DYNAMIC_DOWNCAST(CComboBox, rightW);
+            if (cb) {
+                int wantWidth = CorrectComboListWidth(*cb);
+                if (wantWidth != CB_ERR) {
+                    //the list width already reserves a scrollbar when the list scrolls, which is as wide as the closed
+                    //combo's drop-down button; reserve the button only when the list width did not
+                    bool listScrolls = cb->GetCount() > cb->GetMinVisible() || (cb->GetStyle() & CBS_DISABLENOSCROLL);
+                    row.rightWantsLeft = row.r.right - wantWidth - (listScrolls ? 0 : GetSystemMetrics(SM_CXVSCROLL));
+                }
+            }
+        }
+        return true;
+    }
+}
+
 void CMPCThemeUtil::AdjustDynamicWidgetPair(CWnd* window, int leftWidget, int rightWidget, bool allowShrinkRight) {
+    AdjustDynamicWidgetGroup(window, { { leftWidget, rightWidget } }, allowShrinkRight);
+}
+
+//rows sharing a column are sized together, so the widest label or widest combo list moves the whole column
+//and one row cannot cross the resize threshold alone (#4076)
+void CMPCThemeUtil::AdjustDynamicWidgetGroup(CWnd* window, std::initializer_list<std::pair<int, int>> pairs, bool allowShrinkRight) {
     if (window && IsWindow(window->m_hWnd)) {
         DpiHelper dpiWindow;
         dpiWindow.Override(window->GetSafeHwnd());
         LONG dynamicSpace = dpiWindow.ScaleX(5);
 
-        CWnd* leftW = window->GetDlgItem(leftWidget);
-        CWnd* rightW = window->GetDlgItem(rightWidget);
-
-        // Always auto-detect left widget type
-        WidgetPairType lType;
-        LRESULT lRes = leftW->SendMessage(WM_GETDLGCODE, 0, 0);
-        DWORD buttonType = (leftW->GetStyle() & BS_TYPEMASK);
-
-        if (DLGC_BUTTON == (lRes & DLGC_BUTTON) && (buttonType == BS_CHECKBOX || buttonType == BS_AUTOCHECKBOX)) {
-            lType = WidgetPairCheckBox;
-        } else { //we only support checkbox or text on the left, just assume it's text now
-            lType = WidgetPairText;
+        std::vector<DynamicWidgetRow> rows;
+        for (const auto& pair : pairs) {
+            DynamicWidgetRow row;
+            if (MeasureDynamicWidgetRow(window, pair.first, pair.second, dpiWindow, row)) {
+                rows.push_back(row);
+            }
+        }
+        if (rows.empty()) {
+            return;
         }
 
-        // Always auto-detect right widget type
-        WidgetPairType rType;
-        TCHAR windowClass[MAX_PATH];
-        ::GetClassName(rightW->GetSafeHwnd(), windowClass, _countof(windowClass));
-
-        if (0 == _tcsicmp(windowClass, WC_COMBOBOX)) {
-            rType = WidgetPairCombo;
-        } else { //we only support combo or edit on the right, just assume it's edit now
-            rType = WidgetPairEdit;
+        LONG leftWantsRight = rows[0].leftWantsRight, rightWantsLeft = rows[0].rightWantsLeft;
+        for (const auto& row : rows) {
+            leftWantsRight = std::max(leftWantsRight, row.leftWantsRight);
+            rightWantsLeft = std::min(rightWantsLeft, row.rightWantsLeft);
         }
 
-        if (leftW && rightW && IsWindow(leftW->m_hWnd) && IsWindow(rightW->m_hWnd)) {
-            CRect l, r;
-            LONG leftWantsRight, rightWantsLeft;
-
-            leftW->GetWindowRect(l);
-            leftW->GetOwner()->ScreenToClient(l);
-            rightW->GetWindowRect(r);
-            rightW->GetOwner()->ScreenToClient(r);
-            CDC* lpDC = leftW->GetDC();
-            CFont* pFont = leftW->GetFont();
-            leftWantsRight = l.right;
-            rightWantsLeft = r.left;
-            {
-                int left = l.left;
-                if (lType == WidgetPairCheckBox) {
-                    left += dpiWindow.GetSystemMetricsDPI(SM_CXMENUCHECK) + 2;
-                }
-
-                CFont* pOldFont = lpDC->SelectObject(pFont);
-                TEXTMETRIC tm;
-                lpDC->GetTextMetricsW(&tm);
-
-                CString str;
-                leftW->GetWindowTextW(str);
-                CSize szText = lpDC->GetTextExtent(str);
-                lpDC->SelectObject(pOldFont);
-
-                leftWantsRight = left + szText.cx + tm.tmAveCharWidth;
-                leftW->ReleaseDC(lpDC);
-            }
-
-            {
-                if (rType == WidgetPairCombo) {
-                    //int wantWidth = (int)::SendMessage(rightW->m_hWnd, CB_GETDROPPEDWIDTH, 0, 0);
-                    CComboBox *cb = DYNAMIC_DOWNCAST(CComboBox, rightW);
-                    if (cb) {
-                        int wantWidth = CorrectComboListWidth(*cb);
-                        if (wantWidth != CB_ERR) {
-                            rightWantsLeft = r.right - wantWidth - GetSystemMetrics(SM_CXVSCROLL);
-                        }
-                    }
-                }
-            }
+        for (auto& row : rows) {
+            CRect& l = row.l;
+            CRect& r = row.r;
             CRect cl = l, cr = r;
-            if (lType == WidgetPairText && DT_RIGHT == (leftW->GetStyle() & DT_RIGHT)) //right aligned text not supported, as the right edge is fixed
+            if (row.lType == WidgetPairText && DT_RIGHT == (row.leftW->GetStyle() & DT_RIGHT)) //right aligned text not supported, as the right edge is fixed
             {
                 //do nothing
             } else if (allowShrinkRight) {
@@ -1327,19 +1567,19 @@ void CMPCThemeUtil::AdjustDynamicWidgetPair(CWnd* window, int leftWidget, int ri
                 //this minimizes noticeable layout changes
                 r.left = std::min(rightWantsLeft, std::max(l.right + dynamicSpace, r.left));
             }
-            if ((lType == WidgetPairText || lType == WidgetPairCheckBox) && (rType == WidgetPairCombo || rType == WidgetPairEdit)) {
+            if ((row.lType == WidgetPairText || row.lType == WidgetPairCheckBox) && (row.rType == WidgetPairCombo || row.rType == WidgetPairEdit)) {
                 l.top = r.top;
                 l.bottom += r.Height() - l.Height();
-                if (lType == WidgetPairText) {
-                    leftW->ModifyStyle(0, SS_CENTERIMAGE);
+                if (row.lType == WidgetPairText) {
+                    row.leftW->ModifyStyle(0, SS_CENTERIMAGE);
                 }
             }
 
             if (l != cl) {
-                leftW->MoveWindow(l);
+                row.leftW->MoveWindow(l);
             }
             if (r != cr) {
-                rightW->MoveWindow(r);
+                row.rightW->MoveWindow(r);
             }
         }
     }
@@ -1358,8 +1598,8 @@ bool CMPCThemeUtil::IsWindowVisibleAndRendered(CWnd* window) {
         return false;
     } else {
         CRect r;
-        HDC hdc = GetWindowDC(window->m_hWnd);
-        GetClipBox(hdc, &r);
+        CWindowDC dc(window); // released on scope exit, a raw GetWindowDC here was never released
+        GetClipBox(dc, &r);
         if (r.IsRectEmpty()) {
             return false;
         }

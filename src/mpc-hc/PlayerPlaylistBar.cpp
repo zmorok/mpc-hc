@@ -48,7 +48,8 @@ END_MESSAGE_MAP()
 
 void CPlaylistListFrame::OnNcPaint()
 {
-    if (AppNeedsThemedControls()) {
+    bool win11Style = AppIsThemeLoaded() && CMPCTheme::isWindows11Style;
+    if (AppNeedsThemedControls() || win11Style) {
         CWindowDC dc(this);
         CRect wr;
         GetWindowRect(&wr);
@@ -58,8 +59,10 @@ void CPlaylistListFrame::OnNcPaint()
         clip.DeflateRect(clientOffset.x, clientOffset.x);
         dc.ExcludeClipRect(clip);
         dc.FillSolidRect(wr, CMPCTheme::ContentBGColor);
-        CBrush brush(CMPCTheme::WindowBorderColorLight);
-        dc.FrameRect(wr, &brush);
+        if (!win11Style) { //windows 11 panes don't frame their lists
+            CBrush brush(CMPCTheme::WindowBorderColorLight);
+            dc.FrameRect(wr, &brush);
+        }
     } else {
         __super::OnNcPaint();
     }
@@ -135,6 +138,7 @@ BOOL CPlayerPlaylistBar::Create(CWnd* pParentWnd, UINT defDockBarID)
         CRect(0, 0, 100, 100), &m_listFrame, IDC_PLAYLIST);
 
     m_list.SetExtendedStyle(m_list.GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+    SetListBkColor();
 
     // The column titles don't have to be translated since they aren't displayed anyway
     m_list.InsertColumn(COL_NAME, _T("Name"), LVCFMT_LEFT);
@@ -523,7 +527,7 @@ void CPlayerPlaylistBar::ParsePlayList(CAtlList<CString>& fns, CAtlList<CString>
         return;
     } else if (ydl_src.IsEmpty() && (ct == _T("audio/x-mpegurl") || ct == _T("audio/mpegurl"))) {
         auto fn = fns.GetHead();
-        if (!PathUtils::IsURL(fn) || fn.Find(L"/hls/") == -1) {
+        if (!PathUtils::IsURL(fn) || fn.Find(L"/hls/") == -1 && fn.Find(L".m3u8") == -1) {
             bool lav_fallback = false;
             if (ParseM3UPlayList(fn, &lav_fallback)) {
                 ExternalPlayListLoaded(fn);
@@ -567,12 +571,12 @@ static CString CombinePath(CString base, CString fn, bool base_is_url)
     return base + fn;
 }
 
-static CString CombinePath(CPath p, CString fn)
+static CString CombinePath(CLongPath p, CString fn)
 {
     if (PathUtils::IsFullFilePath(fn)) {
         return fn;
     }
-    p.Append(CPath(fn));
+    p.Append(CLongPath(fn));
     return (LPCTSTR)p;
 }
 
@@ -582,7 +586,7 @@ bool CPlayerPlaylistBar::ParseBDMVPlayList(CString fn)
     CString strPlaylistFile;
     CHdmvClipInfo::HdmvPlaylist MainPlaylist;
 
-    CPath Path(fn);
+    CLongPath Path(fn);
     Path.RemoveFileSpec();
     Path.RemoveFileSpec();
 
@@ -594,6 +598,42 @@ bool CPlayerPlaylistBar::ParseBDMVPlayList(CString fn)
     }
 
     return !m_pl.IsEmpty();
+}
+
+bool ParseCUEFileLine(CString str, CString& filename)
+{
+    if (str.Left(4) != _T("FILE")) {
+        return false;
+    }
+    str = str.Mid(4);
+    str.Trim();
+
+    // the type is the last token on the line, the rest is the file name
+    CString type;
+    if (!str.IsEmpty() && str[0] == _T('"')) {
+        int q = str.Find(_T('"'), 1);
+        if (q < 0) {
+            return false;
+        }
+        filename = str.Mid(1, q - 1);
+        type = str.Mid(q + 1);
+    } else {
+        int p = std::max(str.ReverseFind(_T(' ')), str.ReverseFind(_T('\t')));
+        if (p < 0) {
+            return false;
+        }
+        filename = str.Left(p);
+        filename.Trim();
+        type = str.Mid(p + 1);
+    }
+
+    type.Trim();
+    type.MakeUpper();
+    if (type.IsEmpty() || type == _T("BINARY") || type == _T("MOTOROLA")) {
+        return false;
+    }
+
+    return !filename.IsEmpty();
 }
 
 bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
@@ -621,7 +661,7 @@ bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
         }
     }
     else {
-        CPath basefilepath(cuefn);
+        CLongPath basefilepath(cuefn);
         basefilepath.RemoveFileSpec();
         basefilepath.AddBackslash();
         base = basefilepath.m_strPath;
@@ -645,13 +685,8 @@ bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
             performer = str.Mid(10).Trim(_T("\""));
         }
         else if (str.Left(4) == _T("FILE")) {
-            if (str.Right(4) == _T("WAVE") || str.Right(3) == _T("MP3") || str.Right(4) == _T("FLAC") || str.Right(4) == _T("AIFF")) {
-                CString file_entry;
-                if (str.Right(3) == _T("MP3")) {
-                    file_entry = str.Mid(5, str.GetLength() - 9).Trim(_T("\""));
-                } else {
-                    file_entry = str.Mid(5, str.GetLength() - 10).Trim(_T("\""));
-                }
+            CString file_entry;
+            if (ParseCUEFileLine(str, file_entry)) {
                 if (file_entry != lastfile) {
                     CPlaylistItem pli;
                     lastfile = file_entry;
@@ -690,7 +725,7 @@ bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
         trackl.AddTail(track);
     }
 
-    CPath cp(cuefn);
+    CLongPath cp(cuefn);
     CString fn_no_ext;
     CString fdir;
     if (cp.FileExists()) {
@@ -707,11 +742,36 @@ bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
     POSITION p = pl.GetHeadPosition();
     while (p) {
         CPlaylistItem pli = pl.GetNext(p);
-        if (performer.IsEmpty()) {
+        fileid++;
+
+        // when a file holds a single track its title is not exposed as a chapter,
+        // so it is used for the label instead of the album title
+        CueTrackMeta singletrack;
+        int trackcount = 0;
+        POSITION tp = trackl.GetHeadPosition();
+        while (tp) {
+            const CueTrackMeta& c = trackl.GetNext(tp);
+            if (c.fileID == pli.m_cue_index) {
+                singletrack = c;
+                trackcount++;
+            }
+        }
+
+        if (trackcount == 1 && !singletrack.title.IsEmpty()) {
+            pli.m_label = singletrack.title;
+            if (!singletrack.performer.IsEmpty()) {
+                pli.m_label += _T(" - ") + singletrack.performer;
+            } else if (!performer.IsEmpty()) {
+                pli.m_label += _T(" - ") + performer;
+            }
+            if (filecount > 1) {
+                pli.m_label.AppendFormat(L" [%d/%d]", fileid, filecount);
+            }
+        } else if (performer.IsEmpty()) {
             if (!title.IsEmpty()) {
                 pli.m_label = title;
                 if (filecount > 1) {
-                    pli.m_label.AppendFormat(L" [%d/%d]", ++fileid, filecount);
+                    pli.m_label.AppendFormat(L" [%d/%d]", fileid, filecount);
                 }
             }
         } else {
@@ -721,7 +781,7 @@ bool CPlayerPlaylistBar::ParseCUESheet(CString cuefn) {
                 pli.m_label = title + _T(" - ") + performer;
             }
             if (filecount > 1) {
-                pli.m_label.AppendFormat(L" [%d/%d]", ++fileid, filecount);
+                pli.m_label.AppendFormat(L" [%d/%d]", fileid, filecount);
             }
         }
         if (!cover.IsEmpty()) pli.m_cover = cover;
@@ -773,7 +833,7 @@ bool CPlayerPlaylistBar::ParseM3UPlayList(CString fn, bool* lav_fallback) {
         }
     }
     else {
-        CPath basefilepath(fn);
+        CLongPath basefilepath(fn);
         basefilepath.RemoveFileSpec();
         basefilepath.AddBackslash();
         base = basefilepath.m_strPath;
@@ -874,7 +934,7 @@ bool CPlayerPlaylistBar::ParseMPCPlayList(CString fn)
         return false;
     }
 
-    CPath base(fn);
+    CLongPath base(fn);
     base.RemoveFileSpec();
 
     while (f.ReadString(str)) {
@@ -955,7 +1015,7 @@ bool CPlayerPlaylistBar::ParseMPCPlayList(CString fn)
 
 bool CPlayerPlaylistBar::PlaylistCanStripPath(CString path)
 {
-    CPath p(path);
+    CLongPath p(path);
     p.RemoveFileSpec();
     CString base = p.m_strPath + L"\\";
     int baselen = base.GetLength();
@@ -1014,7 +1074,7 @@ bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e)
 
     bool bRemovePath = PlaylistCanStripPath(fn);
 
-    CPath pl_path(fn);
+    CLongPath pl_path(fn);
     pl_path.RemoveFileSpec();
     CString pl_path_str = pl_path.m_strPath + L"\\";
     int pl_path_len = pl_path_str.GetLength();
@@ -1148,7 +1208,7 @@ void CPlayerPlaylistBar::Open(CAtlList<CString>& fns, bool fMulti, CAtlList<CStr
     Empty();
     Append(fns, fMulti, subs, label, ydl_src, ydl_ua, cue);
 
-    CString ext = CPath(fns.GetHead()).GetExtension().MakeLower();
+    CString ext = CLongPath(fns.GetHead()).GetExtension().MakeLower();
     if (!fMulti && (ext == _T(".mpcpl"))) {
         m_playListPath = fns.GetHead();
     }
@@ -1212,16 +1272,16 @@ void CPlayerPlaylistBar::OpenDVD(CString fn)
 
     CString fnifo;
     if (fn.Find(L".ifo") == -1) {
-        if (CPath(fn).IsDirectory()) {
+        if (CLongPath(fn).IsDirectory()) {
             fn = ForceTrailingSlash(fn);
             fnifo = fn + L"VIDEO_TS.IFO";
-            if (!CPath(fnifo).FileExists()) {
+            if (!CLongPath(fnifo).FileExists()) {
                 fnifo = fn + L"VIDEO_TS\\VIDEO_TS.IFO";
-                if (!CPath(fnifo).FileExists()) {
+                if (!CLongPath(fnifo).FileExists()) {
                     fnifo = fn + L"AUDIO_TS.IFO";
-                    if (!CPath(fnifo).FileExists()) {
+                    if (!CLongPath(fnifo).FileExists()) {
                         fnifo = fn + L"AUDIO_TS\\AUDIO_TS.IFO";
-                        if (!CPath(fnifo).FileExists()) {
+                        if (!CLongPath(fnifo).FileExists()) {
                             return;
                         }
                     }
@@ -1231,7 +1291,7 @@ void CPlayerPlaylistBar::OpenDVD(CString fn)
             return;
         }
     } else {
-        if (CPath(fn).FileExists()) {
+        if (CLongPath(fn).FileExists()) {
             fnifo = fn;
         } else {
             return;
@@ -1435,8 +1495,10 @@ bool CPlayerPlaylistBar::IsAtEnd()
     return isAtEnd;
 }
 
-bool CPlayerPlaylistBar::GetCur(CPlaylistItem& pli, bool check_fns) const
+bool CPlayerPlaylistBar::GetCur(CPlaylistItem& pli, bool check_fns)
 {
+    CAutoLock pledit(&m_plEditLock);
+
     if (!m_pl.IsEmpty()) {
         POSITION p = m_pl.GetPos();
         if (p) {
@@ -1795,7 +1857,7 @@ void CPlayerPlaylistBar::LoadPlaylist(LPCTSTR filename)
     m_list.SetRedraw(FALSE);
 
     if (AfxGetMyApp()->GetPlaylistSavePath(base)) {
-        CPath p;
+        CLongPath p;
         p.Combine(base, _T("default.mpcpl"));
 
         if (p.FileExists()) {
@@ -1828,7 +1890,7 @@ void CPlayerPlaylistBar::SavePlaylist(bool can_delay /* = false*/)
     CString base;
 
     if (AfxGetMyApp()->GetPlaylistSavePath(base)) {
-        CPath p;
+        CLongPath p;
         p.Combine(base, _T("default.mpcpl"));
 
         if (AfxGetAppSettings().bRememberPlaylistItems) {
@@ -1859,7 +1921,22 @@ void CPlayerPlaylistBar::SavePlaylist(bool can_delay /* = false*/)
     }
 }
 
+void CPlayerPlaylistBar::SetListBkColor()
+{
+    if (AppIsThemeLoaded() && CMPCTheme::isWindows11Style) {
+        m_list.SetBkColor(CMPCTheme::ContentBGColor); //the area below the items, which light mode leaves to the native list
+    }
+}
+
+//comes after the list has picked its own background, so this can still override it
+LRESULT CPlayerPlaylistBar::OnMPCThemeChanged(WPARAM wParam, LPARAM lParam)
+{
+    SetListBkColor();
+    return 0;
+}
+
 BEGIN_MESSAGE_MAP(CPlayerPlaylistBar, CMPCThemePlayerBar)
+    ON_MPCTHEMECHANGED()
     ON_WM_DESTROY()
     ON_WM_SIZE()
     ON_NOTIFY(LVN_KEYDOWN, IDC_PLAYLIST, OnLvnKeyDown)
@@ -2144,7 +2221,10 @@ void CPlayerPlaylistBar::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruc
 
     COLORREF bgColor, contentBGColor;
 
-    if (AppNeedsThemedControls()) {
+    //the windows 11 style draws the playlist from the palette in light mode as well
+    bool win11Style = AppIsThemeLoaded() && CMPCTheme::isWindows11Style;
+    bool themedList = AppNeedsThemedControls() || win11Style;
+    if (themedList) {
         contentBGColor = CMPCTheme::ContentBGColor;
     } else {
         contentBGColor = GetSysColor(COLOR_WINDOW);
@@ -2155,7 +2235,24 @@ void CPlayerPlaylistBar::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruc
     inlineEditXpos = numWidth.cx - 2; //magic number 2 for accounting for border/padding of inline edit.  works at all dpi except 168, where it's off by 1px (shrug)
     seqRect.right = fileRect.left;
 
-    if (itemSelected) {
+    int numOffset = 0;
+    if (win11Style) {
+        //fluent list selection: a neutral fill across the whole row, with an accent indicator at the left edge
+        numOffset = m_pMainFrame->m_dpi.ScaleX(4);
+        bgColor = itemSelected ? CMPCTheme::PlaylistSelectedColor : contentBGColor;
+        FillRect(pDC->m_hDC, rcItem, CBrush(bgColor));
+        if (itemSelected) {
+            int pillWidth = m_pMainFrame->m_dpi.ScaleX(3);
+            int pillHeight = rcItem.Height() / 2;
+            CRect pill(CPoint(rcItem.left + m_pMainFrame->m_dpi.ScaleX(2), rcItem.top + (rcItem.Height() - pillHeight) / 2), CSize(pillWidth, pillHeight));
+            CBrush pillBrush(CMPCTheme::PlaylistIndicatorColor);
+            CBrush* oldBrush = pDC->SelectObject(&pillBrush);
+            CPen* oldPen = (CPen*)pDC->SelectStockObject(NULL_PEN);
+            pDC->RoundRect(pill, CPoint(pillWidth, pillWidth));
+            pDC->SelectObject(oldPen);
+            pDC->SelectObject(oldBrush);
+        }
+    } else if (itemSelected) {
         if (AppNeedsThemedControls()) {
             bgColor = CMPCTheme::ContentSelectedColor;
         } else {
@@ -2171,7 +2268,7 @@ void CPlayerPlaylistBar::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruc
 
     COLORREF textColor, sequenceColor;
 
-    if (AppNeedsThemedControls()) {
+    if (themedList) {
         if (pli.m_fInvalid) {
             textColor = CMPCTheme::ContentTextDisabledFGColorFade2;
             sequenceColor = textColor;
@@ -2224,8 +2321,8 @@ void CPlayerPlaylistBar::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruc
     } else {
         pDC->SetTextColor(sequenceColor);
     }
-    pDC->SetBkColor(contentBGColor);
-    pDC->TextOut(rcItem.left + dpi3, (rcItem.top + rcItem.bottom - filesize.cy) / 2, num);
+    pDC->SetBkColor(win11Style ? bgColor : contentBGColor);
+    pDC->TextOut(rcItem.left + dpi3 + numOffset, (rcItem.top + rcItem.bottom - filesize.cy) / 2, num);
 
 
     pDC->RestoreDC(oldDC);
@@ -2557,8 +2654,11 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
     }
     m.AppendMenu(styleListNotEmpty, M_SAVEAS, ResStr(IDS_PLAYLIST_SAVEAS));
     m.AppendMenu(MF_SEPARATOR);
+    //the submenus are plain menus: m themes them when they are appended and owns what that allocates. a local
+    //CMPCThemeMenu would free its item data here while m still shows the items, which crashed once the freed
+    //addresses were reused
     {
-        CMPCThemeMenu sortMenu;
+        CMenu sortMenu;
         sortMenu.CreatePopupMenu();
         UINT styleListNotEmptyPopup = MF_POPUP | (!m_pl.GetCount() ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED);
         sortMenu.AppendMenu(styleListNotEmpty, M_SORTBYNAME, ResStr(IDS_PLAYLIST_SORTBYLABEL));
@@ -2578,7 +2678,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
     m.AppendMenu(MF_SEPARATOR);
     {
         const UINT dockBarID = GetParent()->GetDlgCtrlID();
-        CMPCThemeMenu positionMenu;
+        CMenu positionMenu;
         positionMenu.CreatePopupMenu();
         positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_LEFT ? MF_CHECKED : MF_UNCHECKED), M_POSITION_LEFT, ResStr(IDS_PLAYLIST_POSITION_LEFT));
         positionMenu.AppendMenu(MF_STRING | MF_ENABLED | (dockBarID == AFX_IDW_DOCKBAR_TOP ? MF_CHECKED : MF_UNCHECKED), M_POSITION_TOP, ResStr(IDS_PLAYLIST_POSITION_TOP));
@@ -2711,7 +2811,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
                 }
             }
 
-            CPath path(fd.GetPathName());
+            CLongPath path(fd.GetPathName());
 
             switch (idx) {
                 case 1:
@@ -2762,7 +2862,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint point)
                 /*
                 if (idx != 4 && PlaylistCanStripPath(path))
                 {
-                    CPath p(path);
+                    CLongPath p(path);
                     p.StripPath();
                     fn = (LPCTSTR)p;
                 }

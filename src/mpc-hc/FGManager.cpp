@@ -259,7 +259,7 @@ HRESULT CFGManager::EnumSourceFilters(LPCWSTR lpcwstrFileName, CFGFilterList& fl
         cfn = cfn.Mid(4);
     }
     CStringW protocol = cfn.Left(cfn.Find(':') + 1).TrimRight(':').MakeLower();
-    CStringW ext = CPathW(fn).GetExtension().MakeLower();
+    CStringW ext = CLongPath(fn).GetExtension().MakeLower();
 
     HANDLE hFile = INVALID_HANDLE_VALUE;
 
@@ -1039,6 +1039,9 @@ HRESULT CFGManager::Connect(IPin* pPinOut, IPin* pPinIn, bool bContinueRender)
                             CMPlayerCApp* pApp = AfxGetMyApp();
                             pApp->WriteProfileInt(IDS_R_INTERNAL_LAVVIDEO_HWACCEL, _T("HWAccel"), 0);
                         }
+                    } else if (hr == E_ACCESSDENIED && (filter == GUID_LAVSplitter || filter == GUID_LAVAudio || filter == GUID_LAVVideo)) {
+                        // DLL was missing or loading was blocked
+                        m_filter_blocked = true;
                     }
                 }
                 continue;
@@ -2148,7 +2151,7 @@ void CFGManagerCustom::InsertOtherInternalSourcefilters(bool IsPreview)
     CString ext;
     bool willuselav = false; // some of the most common ext that certainly won't use any of the filters below
     if (isfile) {
-        ext = CPath(m_input).GetExtension().MakeLower();
+        ext = CLongPath(m_input).GetExtension().MakeLower();
         willuselav = (ext == L".mkv") || (ext == L".mp4") || (ext == L".avi") || (ext == L".mp3") || (ext == L".m4a") || (ext == L".ogg") || (ext == L".flac");
     }
 

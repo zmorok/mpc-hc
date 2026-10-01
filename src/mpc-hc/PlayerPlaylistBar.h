@@ -56,6 +56,10 @@ struct CueTrackMeta {
     REFERENCE_TIME time = 0;
 };
 
+// Extract the file name from the FILE line of a cue sheet. Returns false when the
+// line is malformed, or when its type describes raw disc image data we cannot play.
+bool ParseCUEFileLine(CString str, CString& filename);
+
 class CPlayerPlaylistBar : public CMPCThemePlayerBar, public CDropClient
 {
     DECLARE_DYNAMIC(CPlayerPlaylistBar)
@@ -164,7 +168,7 @@ public:
     int GetSelIdx() const;
     void SetSelIdx(int i);
     bool IsAtEnd();
-    bool GetCur(CPlaylistItem& pli, bool check_fns = false) const;
+    bool GetCur(CPlaylistItem& pli, bool check_fns = false);
     CString GetCurFileName(bool use_ydl_source = false);
     CString GetCurFileNameTitle();
     bool SetNext();
@@ -211,6 +215,8 @@ protected:
 
 public:
     afx_msg void OnDestroy();
+    void SetListBkColor();
+    afx_msg LRESULT OnMPCThemeChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg void OnLvnKeyDown(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnNMDblclkList(NMHDR* pNMHDR, LRESULT* pResult);

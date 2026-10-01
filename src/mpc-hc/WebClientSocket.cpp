@@ -545,7 +545,7 @@ bool CWebClientSocket::OnBrowser(CStringA& hdr, CStringA& body, CStringA& mime)
                 m_pMainFrame->SendMessage(WM_COPYDATA, (WPARAM)nullptr, (LPARAM)&cds);
             }
 
-            CPath p(path);
+            CLongPath p(path);
             p.RemoveFileSpec();
             path = (LPCTSTR)p;
         }
@@ -553,7 +553,7 @@ bool CWebClientSocket::OnBrowser(CStringA& hdr, CStringA& body, CStringA& mime)
         path = m_pMainFrame->m_wndPlaylistBar.GetCurFileName();
 
         if (!PathUtils::IsURL(path) && CFileGetStatus(path, fs) && !(fs.m_attribute & CFile::directory)) {
-            CPath p(path);
+            CLongPath p(path);
             p.RemoveFileSpec();
             path = (LPCTSTR)p;
         }
@@ -565,7 +565,7 @@ bool CWebClientSocket::OnBrowser(CStringA& hdr, CStringA& body, CStringA& mime)
 
     if (!path.IsEmpty() && CFileGetStatus(path, fs) && (fs.m_attribute & CFile::directory)
             || path.Find(_T("\\")) == 0) { // FIXME
-        CPath p(path);
+        CLongPath p(path);
         p.Canonicalize();
         p.MakePretty();
         p.AddBackslash();
@@ -593,7 +593,7 @@ bool CWebClientSocket::OnBrowser(CStringA& hdr, CStringA& body, CStringA& mime)
         CString parent;
 
         if (path.GetLength() > 3) {
-            CPath p(path + "..");
+            CLongPath p(path + "..");
             p.Canonicalize();
             p.AddBackslash();
             parent = (LPCTSTR)p;
@@ -680,7 +680,7 @@ bool CWebClientSocket::OnControls(CStringA& hdr, CStringA& body, CStringA& mime)
     CString dir;
 
     if (!path.IsEmpty() && !PathUtils::IsURL(path)) {
-        CPath p(path);
+        CLongPath p(path);
         p.RemoveFileSpec();
         dir = (LPCTSTR)p;
     }
@@ -736,7 +736,7 @@ bool CWebClientSocket::OnVariables(CStringA& hdr, CStringA& body, CStringA& mime
     CString strName;
 
     if (!path.IsEmpty() && !PathUtils::IsURL(path)) {
-        CPath p(path);
+        CLongPath p(path);
         p.RemoveFileSpec();
         dir = (LPCTSTR)p;
     }
@@ -797,7 +797,7 @@ bool CWebClientSocket::OnStatus(CStringA& hdr, CStringA& body, CStringA& mime)
     CString title;
     m_pMainFrame->GetWindowText(title);
 
-    CPath file(m_pMainFrame->m_wndPlaylistBar.GetCurFileName());
+    CLongPath file(m_pMainFrame->m_wndPlaylistBar.GetCurFileName());
 
     CString status;
     OAFilterState fs = m_pMainFrame->GetMediaState();
@@ -1022,30 +1022,13 @@ bool CWebClientSocket::OnViewRes(CStringA& hdr, CStringA& body, CStringA& mime)
     return true;
 }
 
-static CStringA GetChannelsJSON(const std::vector<CBDAChannel>& channels)
-{
-    // begin the JSON object with the "channels" array inside
-    CStringA jsonChannels = "{ \"channels\" : [";
-
-    for (auto it = channels.begin(); it != channels.end();) {
-        // fill the array with individual channel objects
-        jsonChannels += it->ToJSON();
-        if (++it == channels.end()) {
-            break;
-        }
-        jsonChannels += ",";
-    }
-
-    // terminate the array and the object, and return.
-    jsonChannels += "] }";
-    return jsonChannels;
-}
-
 bool CWebClientSocket::OnDVBChannels(CStringA& hdr, CStringA& body, CStringA& mime)
 {
     if (m_pMainFrame->GetPlaybackMode() == PM_DIGITAL_CAPTURE) {
         mime = "application/json";
-        body = GetChannelsJSON(AfxGetAppSettings().m_DVBChannels);
+        // DVBChannelsToJSON (DVBChannel.cpp) rather than a copy of the loop
+        // here, so this and the headless scan's output cannot diverge.
+        body = DVBChannelsToJSON(AfxGetAppSettings().m_DVBChannels);
     } else {
         // if we're not currently running the capture, report the service as
         // unavailable and return.
@@ -1473,14 +1456,14 @@ bool CWebClientSocket::OnBrowseJSON(CStringA& hdr, CStringA& body, CStringA& mim
     if (PathUtils::IsURL(path)) {
         path.Empty();
     } else if (!path.IsEmpty() && CFileGetStatus(path, fs) && !(fs.m_attribute & CFile::directory)) {
-        CPath p(path);
+        CLongPath p(path);
         p.RemoveFileSpec();
         path = (LPCTSTR)p;
     }
 
     if (!path.IsEmpty() && CFileGetStatus(path, fs) && (fs.m_attribute & CFile::directory)
             || path.Find(_T("\\")) == 0) { // FIXME
-        CPath p(path);
+        CLongPath p(path);
         p.Canonicalize();
         p.MakePretty();
         p.AddBackslash();
@@ -1504,7 +1487,7 @@ bool CWebClientSocket::OnBrowseJSON(CStringA& hdr, CStringA& body, CStringA& mim
     } else {
         // at the root of a drive there is nothing to go up to but the drive list
         if (path.GetLength() > 3) {
-            CPath p(path + "..");
+            CLongPath p(path + "..");
             p.Canonicalize();
             p.AddBackslash();
             parent = JSONString((LPCTSTR)p);

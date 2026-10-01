@@ -115,6 +115,15 @@ BOOL CPPageAccelTbl::PreTranslateMessage(MSG* pMsg)
         return TRUE;
     }
 
+    if (pMsg->message == WM_KEYDOWN && (pMsg->wParam == VK_SPACE || pMsg->wParam == VK_RETURN) && pMsg->hwnd == m_list.m_hWnd
+            && GetKeyState(VK_CONTROL) >= 0 && GetKeyState(VK_MENU) >= 0 && GetKeyState(VK_SHIFT) >= 0) {
+        int nItem = m_list.GetNextItem(-1, LVNI_FOCUSED);
+        if (nItem >= 0) {
+            m_list.BeginInPlaceEdit(nItem, COL_KEY);
+            return TRUE;
+        }
+    }
+
     return __super::PreTranslateMessage(pMsg);
 }
 
@@ -961,6 +970,8 @@ BOOL CPPageAccelTbl::OnInitDialog()
     m_list.SetColumnWidth(COL_KEY, LVSCW_AUTOSIZE);
     m_list.SetColumnWidth(COL_ID, LVSCW_AUTOSIZE_USEHEADER);
 
+    m_list.SetWindowPos(GetDlgItem(IDC_EDIT3), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
     // subclass the keylist control
     OldControlProc = (WNDPROC)SetWindowLongPtr(m_list.m_hWnd, GWLP_WNDPROC, (LONG_PTR)ControlProc);
 
@@ -1115,7 +1126,7 @@ void CPPageAccelTbl::GetCustomGridColors(int nItem, COLORREF& horzGridColor, COL
 }
 
 void CPPageAccelTbl::OnCustomdrawList(NMHDR* pNMHDR, LRESULT* pResult) {
-    //this custom draw is used in classic and light modes; dark draws via CMPCThemePlayerListCtrl
+    //this custom draw is used in classic and windows 10 light modes; themed controls draw via CMPCThemePlayerListCtrl
     *pResult = CDRF_DODEFAULT;
     if (!AppNeedsThemedControls()) {
         NMLVCUSTOMDRAW* pLVCD = reinterpret_cast<NMLVCUSTOMDRAW*>(pNMHDR);

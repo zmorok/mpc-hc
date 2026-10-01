@@ -42,6 +42,7 @@ public:
 protected:
     afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
     void getCustomChannelRect(LPRECT rc);
+    void drawPercentage(CDC& dc, const CStringW& str, const CRect& rc);
     void updateModernVolCtrl(CPoint point);
     bool m_bDrag, m_bHover;
     bool modernStyle;
@@ -53,6 +54,7 @@ protected:
 public:
     afx_msg BOOL OnToolTipNotify(UINT id, NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnNMCustomdraw(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg LRESULT OnMPCThemeChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
     afx_msg void OnSetFocus(CWnd* pOldWnd);
     afx_msg void HScroll(UINT nSBCode, UINT nPos);

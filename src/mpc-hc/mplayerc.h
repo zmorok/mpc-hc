@@ -30,6 +30,7 @@
 #include "AppSettings.h"
 #include "MpcApi.h"
 #include "Profile.h"
+#include "ShellDropTarget.h"
 #include "../filters/renderer/VideoRenderers/RenderersSettings.h"
 #include "resource.h"
 
@@ -44,6 +45,7 @@
 #include <afxwinappex.h>
 
 #define MPC_WND_CLASS_NAME L"MediaPlayerClassicW"
+#define MPC_RECOVERY_MUTEX_NAME L"MediaPlayerClassicW_RedirectRecovery"
 
 // define the default logo we use
 #define DEF_LOGO IDF_LOGO3
@@ -104,6 +106,8 @@ enum {
     WM_MPC_SHUTDOWN,
     WM_MPC_LOGOFF,
     WM_MPC_OPENCURPLAYLIST,
+    WM_MPC_CMDLINE, // deliberately outside the range purged while closing: a command line must not be dropped
+    WM_MPC_RUN_DEFERRED, // run an open/close/OnClose recorded while a CMainFrame::CDeferredActionScope holder was on the stack
     WM_LAV_PROPPAGE_CALLBACK,
     WM_MPCVR_SWITCH_FULLSCREEN = WM_APP + 4096,
 };
@@ -132,9 +136,18 @@ class CMPlayerCApp : public CWinAppEx
 
     ATL::CMutex m_mutexOneInstance;
 
+    enum class RedirectResult { Redirected, OpenNormally, ExitSilently };
+
     CAtlList<CString> m_cmdln;
+    // Latched from the switches once they are parsed, rather than read from
+    // them on demand: the switch itself is consumed by the code paths that act
+    // on it, and the run stays headless after that, right through the exit.
+    bool m_bHeadlessCmdLine = false;
+    CShellDropTargetServer m_shellDropTargetServer;
     void PreProcessCommandLine();
     bool SendCommandLine(HWND hWnd);
+    HWND FindOtherInstance();
+    RedirectResult RedirectToOtherInstance();
     UINT GetVKFromAppCommand(UINT nAppCommand);
 
     COLORPROPERTY_RANGE     m_ColorControl[4];
@@ -155,6 +168,13 @@ public:
     ~CMPlayerCApp();
 
     int DoMessageBox(LPCTSTR lpszPrompt, UINT nType, UINT nIDPrompt);
+
+    // True for the whole run of a command line mode that has nobody in front of
+    // it (currently /thumbnails). Such a run must report failures to its caller
+    // instead of raising a modal that will never be dismissed.
+    bool IsHeadlessCmdLine() const;
+    // Write a line to stderr and fail the run (see m_nExitCode).
+    void ReportCmdLineError(LPCTSTR msg);
 
     EventRouter m_eventd;
 
@@ -234,7 +254,12 @@ public:
     bool GetPlaylistSavePath(CString& path);
 
     bool m_fClosingState;
+    // Process exit code. Stays 0 except for the headless command line modes
+    // (/dvbscan, /thumbnails), which have no other way to tell their caller
+    // that the job did not get done.
+    int m_nExitCode = 0;
     bool m_bThemeLoaded;
+    bool m_bNativeMenus;
     CRenderersData m_Renderers;
     CString     m_strVersion;
     CString     m_AudioRendererDisplayName_CL;
@@ -283,6 +308,7 @@ bool WriteRegistryString(HKEY hKeyRoot, LPCWSTR subKey, LPCWSTR valueName, const
 
 #define AppIsThemeLoaded() (static_cast<CMPlayerCApp*>(AfxGetApp())->m_bThemeLoaded)
 #define AppNeedsThemedControls() (AppIsThemeLoaded() && CMPCTheme::drawThemedControls)
+#define AppNeedsThemedMenus() (AppIsThemeLoaded() && !static_cast<CMPlayerCApp*>(AfxGetApp())->m_bNativeMenus)
 
 #define AfxGetMainFrame()   static_cast<CMainFrame*>(AfxGetMainWnd())
 #define AfxFindMainFrame()  dynamic_cast<CMainFrame*>(AfxGetMainWnd())

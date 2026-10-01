@@ -139,19 +139,33 @@ BOOL CPlayerInfoBar::Create(CWnd* pParentWnd)
 {
     BOOL res = CDialogBar::Create(pParentWnd, IDD_PLAYERINFOBAR, WS_CHILD | WS_VISIBLE | CBRS_ALIGN_BOTTOM, IDD_PLAYERINFOBAR);
 
-    if (AppIsThemeLoaded()) {
-        themedToolTip.Create(this, TTS_NOPREFIX);
-        themedToolTip.Activate(TRUE);
-        themedToolTip.SetMaxTipWidth(m_pMainFrame->m_dpi.ScaleX(500));
-        themedToolTip.SetDelayTime(TTDT_AUTOPOP, 10000);
-    } else {
-        m_tooltip.Create(this, TTS_NOPREFIX);
-        m_tooltip.Activate(TRUE);
-        m_tooltip.SetMaxTipWidth(m_pMainFrame->m_dpi.ScaleX(500));
-        m_tooltip.SetDelayTime(TTDT_AUTOPOP, 10000);
-    }
+    CreateToolTip();
 
     return res;
+}
+
+void CPlayerInfoBar::CreateToolTip()
+{
+    CToolTipCtrl& tip = AppIsThemeLoaded() ? themedToolTip : m_tooltip;
+    tip.Create(this, TTS_NOPREFIX);
+    tip.Activate(TRUE);
+    tip.SetMaxTipWidth(m_pMainFrame->m_dpi.ScaleX(500));
+    tip.SetDelayTime(TTDT_AUTOPOP, 10000);
+}
+
+//the tooltip is the one made for the theme, so swap it and hand the new one the lines
+LRESULT CPlayerInfoBar::OnMPCThemeChanged(WPARAM wParam, LPARAM lParam)
+{
+    themedToolTip.DestroyWindow();
+    m_tooltip.DestroyWindow();
+    CreateToolTip();
+    CToolTipCtrl& tip = AppIsThemeLoaded() ? themedToolTip : m_tooltip;
+    for (size_t i = 0; i < m_info.GetCount(); i++) {
+        CString info;
+        m_info[i]->GetWindowText(info);
+        tip.AddTool(m_info[i], info);
+    }
+    return 0;
 }
 
 BOOL CPlayerInfoBar::PreCreateWindow(CREATESTRUCT& cs)
@@ -225,6 +239,7 @@ void CPlayerInfoBar::Relayout()
 }
 
 BEGIN_MESSAGE_MAP(CPlayerInfoBar, CDialogBar)
+    ON_MPCTHEMECHANGED()
     ON_WM_ERASEBKGND()
     ON_WM_SIZE()
     ON_WM_LBUTTONDOWN()
@@ -274,14 +289,14 @@ BOOL CPlayerInfoBar::OnEraseBkgnd(CDC* pDC)
     }
 
     if (AppIsThemeLoaded()) {
-        pDC->FillSolidRect(&r, CMPCTheme::NoBorderColor);
+        pDC->FillSolidRect(&r, CMPCTheme::InfoBarBorderColor);
     } else {
         pDC->Draw3dRect(&r, GetSysColor(COLOR_3DSHADOW), GetSysColor(COLOR_3DHILIGHT));
     }
 
     r.DeflateRect(1, 1);
 
-    pDC->FillSolidRect(&r, 0);
+    pDC->FillSolidRect(&r, CMPCTheme::InfoBarBGColor);
 
     return TRUE;
 }

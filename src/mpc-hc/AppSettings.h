@@ -97,7 +97,9 @@ enum : UINT64 {
     CLSW_MUTE = CLSW_CONFIGLAVVIDEO << 1,
     CLSW_VOLUME = CLSW_MUTE << 1,
     CLSW_THUMBNAILS = CLSW_VOLUME << 1,
-    CLSW_UNRECOGNIZEDSWITCH = CLSW_THUMBNAILS << 1, // 47
+    CLSW_DVBSCAN = CLSW_THUMBNAILS << 1,
+    CLSW_UNRECOGNIZEDSWITCH = CLSW_DVBSCAN << 1, // 48
+    CLSW_EMBEDDING = CLSW_UNRECOGNIZEDSWITCH << 1, // started by COM to serve an Explorer verb, see ShellDropTarget.h
 };
 
 enum MpcCaptionState {
@@ -795,6 +797,18 @@ public:
     DVB_RebuildFilterGraph nDVBRebuildFilterGraph;
     DVB_StopFilterGraph nDVBStopFilterGraph;
 
+    // Headless tuner scan, driven by /dvbscan. Command line only and never
+    // persisted: this describes one run rather than a preference, and writing
+    // it to the profile would leave the next launch trying to scan.
+    struct {
+        ULONG   ulFrequencyStart;   // kHz
+        ULONG   ulFrequencyStop;    // kHz
+        ULONG   ulBandwidth;        // kHz; 0 means use iBDABandwidth
+        ULONG   ulSymbolRate;       // 0 means use iBDASymbolRate
+        CString strOutputPath;      // where the JSON is written
+        bool    bSaveChannels;      // /dvbscansave: the result becomes the saved channel list
+    } cmdlnDVBScan;
+
     // Internal Filters
     bool            SrcFilters[SRC_LAST + !SRC_LAST];
     bool            TraFilters[TRA_LAST + !TRA_LAST];
@@ -806,6 +820,9 @@ public:
     bool            fAudioNormalizeRecover;
     UINT            nAudioBoost;
     bool            bAudioBoostWarned;
+    int             iReplayGainMode; // 0: off, 1: track, 2: album
+    int             iReplayGainPreamp; // dB
+    bool            bReplayGainPreventClipping;
     bool            fAudioTimeShift;
     int             iAudioTimeShift;
     bool            fCustomChannelMapping;
@@ -848,6 +865,7 @@ public:
     int             iModernSeekbarHeight;
 
     CMPCTheme::ModernThemeMode eModernThemeMode;
+    int             iModernThemeStyle;
 
     int             iFullscreenDelay;
 
@@ -1033,6 +1051,7 @@ public:
     int iRedirectOpenToAppendThreshold;
     bool bFullscreenSeparateControls;
     bool bAlwaysUseShortMenu;
+    bool bWin11NativeMenus;
     int iStillVideoDuration;
     int iMouseLeftUpDelay;
 
@@ -1096,6 +1115,8 @@ public:
     static std::multimap<CStringW, CStringW> LoadHistoryHashes(CStringW section, CStringW dateField);
     static void     PurgeExpiredHash(CStringW section, CStringW hash);
     void            LoadSettings();
+    void            ReadWindowsColorSettings();
+    void            UpdateThemeState();
     void            SaveExternalFilters() {
         if (bInitialized) {
             SaveExternalFilters(m_filters);

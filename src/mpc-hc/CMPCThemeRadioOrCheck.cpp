@@ -55,7 +55,11 @@ void CMPCThemeRadioOrCheck::OnPaint()
     if (AppNeedsThemedControls()) {
         DWORD buttonStyle = GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE);
 
-        CPaintDC dc(this);
+        //painted off screen in one pass: erasing first and then drawing made the box flash on every hover change
+        CPaintDC paintDC(this);
+        CMemDC memDC(paintDC, this);
+        CDC& dc = memDC.GetDC();
+        drawBackground(&dc);
         CRect   rectItem;
         GetClientRect(rectItem);
 
@@ -106,11 +110,11 @@ void CMPCThemeRadioOrCheck::OnPaint()
             rectCheck.bottom = rectCheck.top + cbHeight;
 
             if (buttonType == checkType) {
-                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc);
+                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc, false, 0, isDisabled);
             } else if (buttonType == threeStateType) {
-                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc);
+                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc, false, 0, isDisabled);
             } else if (buttonType == radioType) {
-                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc, true);
+                CMPCThemeUtil::drawCheckBox(GetParent(), checkState, isHover, true, rectCheck, &dc, true, 0, isDisabled);
             }
 
             if (!sTitle.IsEmpty()) {
@@ -145,20 +149,21 @@ void CMPCThemeRadioOrCheck::OnPaint()
                     rectItem.OffsetRect(0, (centerRect.Height() - rectItem.Height()) / 2);
                 }
 
+                HBRUSH hb; //same brushes OnEraseBkgnd uses; both are shared, not ours to delete
                 if (isFileDialogChild) {
-                    CMPCThemeUtil::getCtlColorFileDialog(dc.GetSafeHdc(), CTLCOLOR_BTN);
+                    hb = CMPCThemeUtil::getCtlColorFileDialog(dc.GetSafeHdc(), CTLCOLOR_BTN);
                 } else {
                     dc.SetBkColor(CMPCTheme::WindowBGColor);
+                    hb = CMPCThemeUtil::getParentDialogBGClr(this, &dc);
                 }
 
                 CRect focusRect = rectItem;
                 focusRect.InflateRect(0, 0);
-                { //clears the previous focus rect: the text is drawn transparently, and focus changes
-                  //repaint us without an erase, so nothing else wipes it
-                    HBRUSH hb = CMPCThemeUtil::getParentDialogBGClr(this, &dc);
+                { //clears the previous focus rect and text: focus changes repaint us without an erase, and
+                  //transparent antialiased text drawn over itself gets brighter each time
                     CBrush cb;
                     cb.Attach(hb);
-                    dc.FrameRect(focusRect, &cb);
+                    dc.FillRect(focusRect, &cb);
                     cb.Detach();
                 }
 
@@ -264,7 +269,14 @@ BOOL CMPCThemeRadioOrCheck::OnEraseBkgnd(CDC* pDC)
     if (!AppNeedsThemedControls() && !isFileDialogChild) { //must match the OnPaint condition; this class is also used as a dialog member in classic mode
         return __super::OnEraseBkgnd(pDC);
     }
+    if (!AppNeedsThemedControls()) {
+        drawBackground(pDC);
+    } //otherwise OnPaint draws the background itself
+    return TRUE;
+}
 
+void CMPCThemeRadioOrCheck::drawBackground(CDC* pDC)
+{
     CRect r;
     GetClientRect(r);
     if (isFileDialogChild) {
@@ -273,7 +285,6 @@ BOOL CMPCThemeRadioOrCheck::OnEraseBkgnd(CDC* pDC)
     } else {
         CMPCThemeUtil::drawParentDialogBGClr(this, pDC, r);
     }
-    return TRUE;
 }
 
 

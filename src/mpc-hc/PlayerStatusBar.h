@@ -50,6 +50,7 @@ private:
 
     CToolTipCtrl m_tooltip;
     CMPCThemeToolTipCtrl themedToolTip;
+    void CreateToolTip();
 
     EventClient m_eventc;
     void EventCallback(MpcEvent ev);
@@ -77,7 +78,7 @@ public:
     CString GetStatusTimer() const;
     CString GetStatusMessage() const;
 
-    CString PreparePathStatusMessage(CPath path);
+    CString PreparePathStatusMessage(CLongPath path);
 
     void ShowTimer(bool fShow);
 
@@ -99,6 +100,7 @@ protected:
 
     afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnPaint();
+    afx_msg LRESULT OnMPCThemeChanged(WPARAM wParam, LPARAM lParam);
     afx_msg void OnSize(UINT nType, int cx, int cy);
     afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
     afx_msg void OnLButtonDown(UINT nFlags, CPoint point);

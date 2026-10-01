@@ -166,6 +166,9 @@ CAppSettings::CAppSettings()
     , fAudioNormalizeRecover(true)
     , nAudioBoost(0)
     , bAudioBoostWarned(false)
+    , iReplayGainMode(0)
+    , iReplayGainPreamp(0)
+    , bReplayGainPreventClipping(true)
     , fAudioTimeShift(false)
     , iAudioTimeShift(0)
     , fCustomChannelMapping(false)
@@ -193,6 +196,7 @@ CAppSettings::CAppSettings()
     , bWindows10AccentColorsEnabled(false)
     , iModernSeekbarHeight(DEF_MODERN_SEEKBAR_HEIGHT)
     , eModernThemeMode(CMPCTheme::ModernThemeMode::WINDOWSDEFAULT)
+    , iModernThemeStyle(static_cast<int>(CMPCTheme::ModernThemeStyle::WINDOWSDEFAULT))
     , iFullscreenDelay(MIN_FULLSCREEN_DELAY)
     , iVerticalAlignVideo(verticalAlignVideoType::ALIGN_MIDDLE)
     , nJumpDistS(DEFAULT_JUMPDISTANCE_1)
@@ -295,6 +299,7 @@ CAppSettings::CAppSettings()
     , iRedirectOpenToAppendThreshold(1000)
     , bFullscreenSeparateControls(true)
     , bAlwaysUseShortMenu(false)
+    , bWin11NativeMenus(false)
     , iStillVideoDuration(10)
     , iMouseLeftUpDelay(0)
     , bUseFreeType(false)
@@ -1075,6 +1080,7 @@ void CAppSettings::SaveSettings(bool write_full_history /* = false */)
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_MPCTHEME, bMPCTheme);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNSEEKBARHEIGHT, iModernSeekbarHeight);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNTHEMEMODE, static_cast<int>(eModernThemeMode));
+    pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNTHEMESTYLE, iModernThemeStyle);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_FULLSCREEN_DELAY, iFullscreenDelay);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_VERTICALALIGNVIDEO, static_cast<int>(iVerticalAlignVideo));
 
@@ -1094,6 +1100,9 @@ void CAppSettings::SaveSettings(bool write_full_history /* = false */)
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIONORMALIZERECOVER, fAudioNormalizeRecover);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIOBOOST, nAudioBoost);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIOBOOSTWARNED, bAudioBoostWarned);
+    pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINMODE, iReplayGainMode);
+    pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINPREAMP, iReplayGainPreamp);
+    pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINPREVENTCLIPPING, bReplayGainPreventClipping);
 
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_SPEAKERCHANNELS, nSpeakerChannels);
 
@@ -1407,6 +1416,7 @@ void CAppSettings::SaveSettings(bool write_full_history /* = false */)
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_REDIRECT_OPEN_TO_APPEND_THRESHOLD, iRedirectOpenToAppendThreshold);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_FULLSCREEN_SEPARATE_CONTROLS, bFullscreenSeparateControls);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_ALWAYS_USE_SHORT_MENU, bAlwaysUseShortMenu);
+    pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_WIN11_NATIVE_MENUS, bWin11NativeMenus);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_STILL_VIDEO_DURATION, iStillVideoDuration);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_MOUSE_LEFTUP_DELAY, iMouseLeftUpDelay);
     pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_CAPTURE_DEINTERLACE, bCaptureDeinterlace);
@@ -1935,31 +1945,17 @@ void CAppSettings::LoadSettings()
     bAutoUploadSubtitles = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_AUTOUPLOADSUBTITLES, FALSE);
     bPreferHearingImpairedSubtitles = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_PREFERHEARINGIMPAIREDSUBTITLES, FALSE);
     bMPCTheme = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_MPCTHEME, TRUE);
-    if (IsWindows10OrGreater()) {
-        CRegKey key;
-        if (ERROR_SUCCESS == key.Open(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"), KEY_READ)) {
-            DWORD useTheme = (DWORD)-1;
-            if (ERROR_SUCCESS == key.QueryDWORDValue(_T("AppsUseLightTheme"), useTheme)) {
-                if (0 == useTheme) {
-                    bWindows10DarkThemeActive = true;
-                }
-            }
-        }
-        if (ERROR_SUCCESS == key.Open(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Windows\\DWM"), KEY_READ)) {
-            DWORD useColorPrevalence = (DWORD)-1;
-            if (ERROR_SUCCESS == key.QueryDWORDValue(_T("ColorPrevalence"), useColorPrevalence)) {
-                if (1 == useColorPrevalence) {
-                    bWindows10AccentColorsEnabled = true;
-                }
-            }
-        }
-    }
+    ReadWindowsColorSettings();
     iModernSeekbarHeight = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNSEEKBARHEIGHT, DEF_MODERN_SEEKBAR_HEIGHT);
     if (iModernSeekbarHeight < MIN_MODERN_SEEKBAR_HEIGHT || iModernSeekbarHeight > MAX_MODERN_SEEKBAR_HEIGHT) {
         iModernSeekbarHeight = DEF_MODERN_SEEKBAR_HEIGHT;
     }
 
     eModernThemeMode = static_cast<CMPCTheme::ModernThemeMode>(pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNTHEMEMODE, static_cast<int>(CMPCTheme::ModernThemeMode::WINDOWSDEFAULT)));
+    iModernThemeStyle = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_MODERNTHEMESTYLE, static_cast<int>(CMPCTheme::ModernThemeStyle::WINDOWSDEFAULT));
+    if (iModernThemeStyle < static_cast<int>(CMPCTheme::ModernThemeStyle::WINDOWSDEFAULT) || iModernThemeStyle > static_cast<int>(CMPCTheme::ModernThemeStyle::WINDOWS11)) {
+        iModernThemeStyle = static_cast<int>(CMPCTheme::ModernThemeStyle::WINDOWSDEFAULT);
+    }
 
     iFullscreenDelay = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_FULLSCREEN_DELAY, MIN_FULLSCREEN_DELAY);
     if (iFullscreenDelay < MIN_FULLSCREEN_DELAY || iFullscreenDelay > MAX_FULLSCREEN_DELAY) {
@@ -2017,6 +2013,9 @@ void CAppSettings::LoadSettings()
     fAudioNormalizeRecover = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIONORMALIZERECOVER, TRUE);
     nAudioBoost = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIOBOOST, 0);
     bAudioBoostWarned = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_AUDIOBOOSTWARNED, FALSE);
+    iReplayGainMode = std::clamp((int)pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINMODE, 0), 0, 2);
+    iReplayGainPreamp = std::clamp((int)pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINPREAMP, 0), -15, 15);
+    bReplayGainPreventClipping = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_REPLAYGAINPREVENTCLIPPING, TRUE);
 
     nSpeakerChannels = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_SPEAKERCHANNELS, 2);
 
@@ -2386,6 +2385,7 @@ void CAppSettings::LoadSettings()
     iRedirectOpenToAppendThreshold = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_REDIRECT_OPEN_TO_APPEND_THRESHOLD, 1000);
     bFullscreenSeparateControls = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_FULLSCREEN_SEPARATE_CONTROLS, TRUE);
     bAlwaysUseShortMenu = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_ALWAYS_USE_SHORT_MENU, FALSE);
+    bWin11NativeMenus = !!pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_WIN11_NATIVE_MENUS, FALSE);
     iStillVideoDuration = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_STILL_VIDEO_DURATION, 10);
     iMouseLeftUpDelay = pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_MOUSE_LEFTUP_DELAY, 0);
 
@@ -2449,17 +2449,58 @@ void CAppSettings::LoadSettings()
         }
     }
 
-    if (bMPCTheme) {
-        CMPCTheme::InitializeColors();
-    }
-    // GUI theme can be used now
-    static_cast<CMPlayerCApp*>(AfxGetApp())->m_bThemeLoaded = bMPCTheme;
+    UpdateThemeState();
 
     if (fLaunchfullscreen && slFiles.GetCount() > 0) {
         nCLSwitches |= CLSW_FULLSCREEN;
     }
 
     bInitialized = true;
+}
+
+void CAppSettings::ReadWindowsColorSettings()
+{
+    bWindows10DarkThemeActive = false;
+    bWindows10AccentColorsEnabled = false;
+    if (IsWindows10OrGreater()) {
+        CRegKey key;
+        if (ERROR_SUCCESS == key.Open(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"), KEY_READ)) {
+            DWORD useTheme = (DWORD)-1;
+            if (ERROR_SUCCESS == key.QueryDWORDValue(_T("AppsUseLightTheme"), useTheme)) {
+                if (0 == useTheme) {
+                    bWindows10DarkThemeActive = true;
+                }
+            }
+        }
+        if (ERROR_SUCCESS == key.Open(HKEY_CURRENT_USER, _T("Software\\Microsoft\\Windows\\DWM"), KEY_READ)) {
+            DWORD useColorPrevalence = (DWORD)-1;
+            if (ERROR_SUCCESS == key.QueryDWORDValue(_T("ColorPrevalence"), useColorPrevalence)) {
+                if (1 == useColorPrevalence) {
+                    bWindows10AccentColorsEnabled = true;
+                }
+            }
+        }
+    }
+}
+
+// works out whether the modern theme is drawn and with which palette; runs at startup and again
+// whenever a theme setting or the windows colour settings change, so all of it must be safe to redo
+void CAppSettings::UpdateThemeState()
+{
+    // a contrast theme brings its own colours, which the modern palette cannot follow;
+    // step aside while one is on and let the classic path draw with the system colours
+    HIGHCONTRAST hc = { sizeof(hc) };
+    bool bHighContrast = SystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0) && (hc.dwFlags & HCF_HIGHCONTRASTON);
+    bool bThemeLoaded = bMPCTheme && !bHighContrast;
+    if (bHighContrast) {
+        bWindows10DarkThemeActive = false; //also stops the dark file dialog workaround, which runs even without the theme
+    }
+    if (bThemeLoaded) {
+        CMPCTheme::InitializeColors();
+    }
+    // GUI theme can be used now
+    static_cast<CMPlayerCApp*>(AfxGetApp())->m_bThemeLoaded = bThemeLoaded;
+    static_cast<CMPlayerCApp*>(AfxGetApp())->m_bNativeMenus = bThemeLoaded && bWin11NativeMenus && IsWindowsVersionOrGreaterBuild(10, 0, 22000);
 }
 
 bool CAppSettings::GetAllowMultiInst() const
@@ -2715,6 +2756,12 @@ void CAppSettings::ParseCommandLine(CAtlList<CString>& cmdln)
     fixedWindowPosition = NO_FIXED_POSITION;
     iMonitor = 0;
     strPnSPreset.Empty();
+    cmdlnDVBScan.ulFrequencyStart = 0;
+    cmdlnDVBScan.ulFrequencyStop = 0;
+    cmdlnDVBScan.ulBandwidth = 0;
+    cmdlnDVBScan.ulSymbolRate = 0;
+    cmdlnDVBScan.strOutputPath.Empty();
+    cmdlnDVBScan.bSaveChannels = false;
 
     POSITION pos = cmdln.GetHeadPosition();
     while (pos) {
@@ -2735,6 +2782,8 @@ void CAppSettings::ParseCommandLine(CAtlList<CString>& cmdln)
                 nCLSwitches |= CLSW_MINIMIZED;
             } else if (sw == _T("new")) {
                 nCLSwitches |= CLSW_NEW;
+            } else if (sw == _T("embedding")) { // COM appends -Embedding when it starts a local server
+                nCLSwitches |= CLSW_EMBEDDING;
             } else if (sw == _T("help") || sw == _T("h") || sw == _T("?")) {
                 nCLSwitches |= CLSW_HELP;
             } else if (sw == _T("dub") && pos) {
@@ -2861,6 +2910,32 @@ void CAppSettings::ParseCommandLine(CAtlList<CString>& cmdln)
                 if (tmpport >= 0 && tmpport <= 65535) {
                     nCmdlnWebServerPort = tmpport;
                 }
+            } else if (sw == _T("dvbscan") && pos) {
+                // /dvbscan <start>-<stop>, in kHz. Run a tuner scan without the
+                // scan dialog, write the result and quit. The range is required
+                // because there is no sensible default: the persisted one
+                // belongs to whoever last used the dialog.
+                CString strRange = cmdln.GetNext(pos);
+                int nDash = strRange.Find(_T('-'));
+                if (nDash > 0) {
+                    ULONG ulStart = _tcstoul(strRange.Left(nDash), nullptr, 10);
+                    ULONG ulStop = _tcstoul(strRange.Mid(nDash + 1), nullptr, 10);
+                    if (ulStart > 0 && ulStop >= ulStart) {
+                        cmdlnDVBScan.ulFrequencyStart = ulStart;
+                        cmdlnDVBScan.ulFrequencyStop = ulStop;
+                        nCLSwitches |= CLSW_DVBSCAN;
+                    }
+                }
+            } else if (sw == _T("dvbscanout") && pos) {
+                cmdlnDVBScan.strOutputPath = cmdln.GetNext(pos);
+            } else if (sw == _T("dvbbandwidth") && pos) {
+                cmdlnDVBScan.ulBandwidth = _tcstoul(cmdln.GetNext(pos), nullptr, 10);
+            } else if (sw == _T("dvbsymbolrate") && pos) {
+                cmdlnDVBScan.ulSymbolRate = _tcstoul(cmdln.GetNext(pos), nullptr, 10);
+            } else if (sw == _T("dvbscansave")) {
+                // Only means anything together with /dvbscan; see
+                // CMainFrame::FinishHeadlessDVBScan for what gets stored.
+                cmdlnDVBScan.bSaveChannels = true;
             } else if (sw == _T("debug")) {
                 fShowDebugInfo = true;
             } else if (sw == _T("nocrashreporter")) {
@@ -3917,11 +3992,6 @@ void CAppSettings::MigrateSettings()
             }
         }
         [[fallthrough]];
-        case 1: {
-            // Internal decoding of WMV 1/2/3 is now disabled by default so we reinitialize its value
-            pApp->WriteProfileInt(IDS_R_INTERNAL_FILTERS, _T("TRA_WMV"), FALSE);
-        }
-        [[fallthrough]];
         case 2: {
             const CString section(_T("Settings"));
             if (pApp->HasProfileEntry(section, _T("FullScreenCtrls")) &&
@@ -4030,10 +4100,6 @@ void CAppSettings::MigrateSettings()
             VERIFY(pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_DISABLE_SUBTITLE_ANIMATION, bDisableSubtitleAnimation));
         }
         [[fallthrough]];
-        case 5:
-            copyInt(IDS_R_INTERNAL_FILTERS, _T("SRC_DTSAC3"), IDS_R_INTERNAL_FILTERS, _T("SRC_DTS"));
-            copyInt(IDS_R_INTERNAL_FILTERS, _T("SRC_DTSAC3"), IDS_R_INTERNAL_FILTERS, _T("SRC_AC3"));
-        [[fallthrough]];
         case 6: {
             SubtitleRenderer subrenderer = SubtitleRenderer::INTERNAL;
             if (!pApp->GetProfileInt(IDS_R_SETTINGS, _T("AutoloadSubtitles"), TRUE)) {
@@ -4055,7 +4121,7 @@ void CAppSettings::MigrateSettings()
             // Update the settings after the removal of DirectX 7 renderers
             switch (pApp->GetProfileInt(IDS_R_SETTINGS, IDS_RS_DSVIDEORENDERERTYPE, VIDRNDT_DS_VMR7)) {
                 case 3: // VIDRNDT_DS_VMR7WINDOWED
-                    VERIFY(pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_DSVIDEORENDERERTYPE, VIDRNDT_DS_VMR9WINDOWED));
+                    VERIFY(pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_DSVIDEORENDERERTYPE, VIDRNDT_DS_VMR7));
                     break;
                 case 5: // VIDRNDT_DS_VMR7RENDERLESS
                     VERIFY(pApp->WriteProfileInt(IDS_R_SETTINGS, IDS_RS_DSVIDEORENDERERTYPE, VIDRNDT_DS_VMR9RENDERLESS));
