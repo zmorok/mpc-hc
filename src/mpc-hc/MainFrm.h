@@ -758,6 +758,7 @@ protected:
     void AutoChangeMonitorMode();
 
     void GraphEventComplete();
+    HRESULT ResetNativeVideoDecoderForLoop();
 
     friend class CGraphThread;
     CGraphThread* m_pGraphThread;

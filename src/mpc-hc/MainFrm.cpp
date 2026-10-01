@@ -3308,9 +3308,46 @@ bool CMainFrame::CheckABRepeat(REFERENCE_TIME& aPos, REFERENCE_TIME& bPos) {
 }
 
 
-//
+HRESULT CMainFrame::ResetNativeVideoDecoderForLoop()
+{
+    CDeferredActionScope actionScope(*this);
+    if (GetPlaybackMode() != PM_FILE || !m_pGB) {
+        return S_FALSE;
+    }
+
+    CComPtr<IBaseFilter> pDecoder = FindFilter(GUID_LAVVideo, m_pGB);
+    CComQIPtr<ILAVVideoStatus> pStatus = pDecoder;
+    const LPCWSTR decoderName = pStatus ? pStatus->GetActiveDecoderName() : nullptr;
+    if (!decoderName || wcscmp(decoderName, L"dxva2n") != 0) {
+        return S_FALSE;
+    }
+
+    CComPtr<IPin> pInput = GetFirstPin(pDecoder, PINDIR_INPUT);
+    CComPtr<IPin> pOutput = GetFirstPin(pDecoder, PINDIR_OUTPUT);
+    CComPtr<IPin> pSource, pRenderer;
+    CMediaType inputType, outputType;
+    if (!pInput || !pOutput
+            || FAILED(pInput->ConnectedTo(&pSource)) || FAILED(pOutput->ConnectedTo(&pRenderer))
+            || FAILED(pInput->ConnectionMediaType(&inputType)) || FAILED(pOutput->ConnectionMediaType(&outputType))) {
+        return E_FAIL;
+    }
+
+    // Stop alone keeps the native DXVA decoder and its surface pool alive.
+    // Reconnect only the video decoder to recreate both after draining at EOS.
+    // The graph, audio/subtitle selection, playback rate and zoom stay intact.
+    if (!MediaControlStop(true)) {
+        return E_FAIL;
+    }
+    HRESULT hr = m_pGB->Disconnect(pOutput);
+    if (SUCCEEDED(hr)) hr = m_pGB->Disconnect(pRenderer);
+    if (SUCCEEDED(hr)) hr = m_pGB->Disconnect(pInput);
+    if (SUCCEEDED(hr)) hr = m_pGB->Disconnect(pSource);
+    if (SUCCEEDED(hr)) hr = m_pGB->ConnectDirect(pSource, pInput, &inputType);
+    if (SUCCEEDED(hr)) hr = m_pGB->ConnectDirect(pOutput, pRenderer, &outputType);
+    return hr;
+}
+
 // graph event EC_COMPLETE handler
-//
 void CMainFrame::GraphEventComplete()
 {
     CAppSettings& s = AfxGetAppSettings();
@@ -3360,10 +3397,24 @@ void CMainFrame::GraphEventComplete()
             } else if (m_pMS) {
                 REFERENCE_TIME rtDur = 0;
                 if ((m_pMS->GetDuration(&rtDur) == S_OK) && (rtDur >= 1000000LL) || !IsImageFile(lastOpenFile)) { // repeating still image is pointless and can cause player UI to freeze
+                    const HRESULT resetResult = ResetNativeVideoDecoderForLoop();
+                    if (FAILED(resetResult)) {
+                        // Recover a failed reconnection through the existing reopen path.
+                        m_rtReloadPos = 0;
+                        m_iReloadAudioIdx = GetCurrentAudioTrackIdx();
+                        m_iReloadSubIdx = GetCurrentSubtitleTrackIdx();
+                        m_bKeepLoopCountOnStop = true;
+                        m_fEndOfStream = true;
+                        PostMessage(WM_COMMAND, ID_FILE_REOPEN);
+                        return;
+                    }
                     REFERENCE_TIME rtPos = 0;
                     m_pMS->SetPositions(&rtPos, AM_SEEKING_AbsolutePositioning, nullptr, AM_SEEKING_NoPositioning);
-                    if (GetMediaState() == State_Paused) {
+                    if (resetResult == S_OK || GetMediaState() == State_Paused) {
                         SendMessage(WM_COMMAND, ID_PLAY_PLAY);
+                    }
+                    if (resetResult == S_OK) {
+                        MoveVideoWindow();
                     }
                 }
             }
