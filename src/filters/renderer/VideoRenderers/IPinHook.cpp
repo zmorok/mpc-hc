@@ -24,6 +24,7 @@
 #include <d3d9.h>
 #include <dxva.h>
 #include <dxva2api.h>
+#include <evr.h>
 #include "moreuuids.h"
 
 #include "IPinHook.h"
@@ -150,6 +151,20 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
     if (pSample && SUCCEEDED(pSample->GetTime(&rtStart, &rtStop))) {
         g_tSampleStart = rtStart;
     }
+
+    if (pSample) {
+        CComPtr<IMFGetService> pGS;
+        if (SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
+            CComPtr<IDirect3DSurface9> pSurface;
+            if (SUCCEEDED(pGS->GetService(MR_BUFFER_SERVICE, IID_PPV_ARGS(&pSurface))) && pSurface) {
+                D3DLOCKED_RECT lr;
+                if (SUCCEEDED(pSurface->LockRect(&lr, nullptr, D3DLOCK_READONLY))) {
+                    pSurface->UnlockRect();
+                }
+            }
+        }
+    }
+
     return ReceiveOrg(This, pSample);
 }
 

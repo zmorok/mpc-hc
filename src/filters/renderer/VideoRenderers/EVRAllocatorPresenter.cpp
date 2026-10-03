@@ -171,6 +171,9 @@ CEVRAllocatorPresenter::~CEVRAllocatorPresenter()
     if (m_bHookedNewSegment) {
         UnhookNewSegment();
     }
+    if (m_bHookedReceive) {
+        UnhookReceive();
+    }
 }
 
 void CEVRAllocatorPresenter::ResetStats()
@@ -290,6 +293,10 @@ STDMETHODIMP CEVRAllocatorPresenter::CreateRenderer(IUnknown** ppRenderer)
                 m_fUseInternalTimer = true;
                 m_bHookedNewSegment = true;
             };
+            CComQIPtr<IMemInputPin> pMemInputPin = pPin;
+            if (HookReceive((IMemInputPinC*)(IMemInputPin*)pMemInputPin)) {
+                m_bHookedReceive = true;
+            }
         }
         *ppRenderer = pBF.Detach();
     } else {
@@ -369,6 +376,8 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStart(MFTIME hnsSystemTime, LONGLONG
     TRACE_EVR("EVR: OnClockStart  hnsSystemTime = %I64d,   llClockStartOffset = %I64d\n", hnsSystemTime, llClockStartOffset);
     m_ModeratedTimeLast  = -1;
     m_ModeratedClockLast = -1;
+    m_bPostFlushSeek = false;
+    m_llSeekClockOffset = 0;
 
     return S_OK;
 }
@@ -383,6 +392,8 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStop(MFTIME hnsSystemTime)
 
     m_ModeratedClockLast = -1;
     m_ModeratedTimeLast  = -1;
+    m_bPostFlushSeek = false;
+    m_llSeekClockOffset = 0;
     return S_OK;
 }
 
@@ -1992,6 +2003,7 @@ void CEVRAllocatorPresenter::OnVBlankFinished(bool bAll, LONGLONG PerformanceCou
     } else {
         llClockTime = m_StarvationClock;
     }
+    llClockTime -= m_llSeekClockOffset;
 
     if (SUCCEEDED(m_pCurrentlyDisplayedSample->GetSampleDuration(&SampleDuration))) {
         // Some filters return invalid values, ignore them
@@ -2251,6 +2263,16 @@ void CEVRAllocatorPresenter::RenderThread()
                                 llClockTime = m_StarvationClock;
                             }
 
+                            if (m_bPostFlushSeek) {
+                                m_bPostFlushSeek = false;
+                                if (bValidSampleTime && llClockTime > nsSampleTime) {
+                                    m_llSeekClockOffset = llClockTime - nsSampleTime;
+                                } else {
+                                    m_llSeekClockOffset = 0;
+                                }
+                            }
+                            llClockTime -= m_llSeekClockOffset;
+
                             if (!bValidSampleTime) {
                                 // Just play as fast as possible
                                 bStepForward = true;
@@ -2344,7 +2366,8 @@ void CEVRAllocatorPresenter::RenderThread()
 
                                 LONGLONG VSyncOffset0 = 0;
                                 bool bDoVSyncCorrection = false;
-                                if ((SyncOffset < -(TimePerFrame + TimePerFrameMargin0 - TimePerFrameMargin1)) && nSamplesLeft > 0) { // Only drop if we have something else to display at once
+                                bool bDoDrop = !bForcePaint && (SyncOffset < -(TimePerFrame + TimePerFrameMargin0 - TimePerFrameMargin1)) && nSamplesLeft > 0;
+                                if (bDoDrop) { // Only drop if we have something else to display at once
                                     // Drop frame
                                     TRACE_EVR("EVR: Dropped frame\n");
                                     m_pcFrames++;
@@ -2355,7 +2378,7 @@ void CEVRAllocatorPresenter::RenderThread()
                                     //VSyncOffset0 = (-SyncOffset) - VSyncTime + TimePerFrameMargin1;
                                     //m_LastPredictedSync = VSyncOffset0;
                                     bDoVSyncCorrection = false;
-                                } else if (SyncOffset < TimePerFrameMargin1) {
+                                } else if (SyncOffset < TimePerFrameMargin1 || bForcePaint) {
 
                                     if (bVSyncCorrection) {
                                         VSyncOffset0 = -SyncOffset;
@@ -2968,6 +2991,9 @@ void CEVRAllocatorPresenter::FlushSamples()
     m_bLastSampleOffsetValid = false;
     m_bSignaledStarvation = false;
     m_LastScheduledSampleTime = -1;
+
+    m_bPostFlushSeek = true;
+    m_llSeekClockOffset = 0;
 }
 
 HRESULT CEVRAllocatorPresenter::TrackSample(IMFSample* pSample)

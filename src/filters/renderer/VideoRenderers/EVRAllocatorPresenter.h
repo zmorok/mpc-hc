@@ -187,6 +187,8 @@ namespace DSObjects
         bool                             m_bEvtQuit;
         HANDLE                           m_hEvtFlush;        // Discard all buffers
         bool                             m_bEvtFlush;
+        bool                             m_bPostFlushSeek = false;
+        LONGLONG                         m_llSeekClockOffset = 0;
 
         bool                             m_fUseInternalTimer;
         INT32                            m_LastSetOutputRange;
