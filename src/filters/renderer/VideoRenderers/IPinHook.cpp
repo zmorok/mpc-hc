@@ -147,37 +147,34 @@ static HRESULT(STDMETHODCALLTYPE* ReceiveOrg)(IMemInputPinC* This, IMediaSample*
 
 static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* pSample)
 {
-    REFERENCE_TIME rtStart, rtStop;
+    REFERENCE_TIME rtStart = 0, rtStop = 0;
     if (pSample && SUCCEEDED(pSample->GetTime(&rtStart, &rtStop))) {
         g_tSampleStart = rtStart;
     }
 
     if (pSample) {
-        // Synchronize DXVA2 hardware decoder (e.g. NVDEC) before delivering the surface to EVR Mixer.
-        // In Direct3D9, IDirectXVideoDecoder decoding is asynchronous. If EVR Mixer's worker thread
-        // issues VideoProcessBlt before NVDEC finishes decoding all CTUs of the frame, the bottom-right
-        // region of the surface still contains leftover pixels from a previous cycle in the DXVA2 surface
-        // pool, producing diagonal staircase tearing artifacts (especially on repeat loops and seeks).
-        // Issuing a D3DQUERYTYPE_EVENT with D3DISSUE_END and waiting with D3DGETDATA_FLUSH guarantees
-        // the GPU decoder has fully written the surface before EVR Mixer starts blending it.
+        // Detect DXVA2 hardware decode surfaces (e.g. NVDEC).
+        // NVDEC decodes macroblock rows asynchronously on the GPU video engine.
+        // EVR Mixer runs VideoProcessBlt on a high-frequency worker thread. Without a sufficient
+        // decode completion window, VideoProcessBlt reads the surface while NVDEC is still decoding,
+        // blending partially decoded CTU macroblocks with leftover pixels from a previous cycle in the
+        // surface pool (the diagonal "staircase" tearing defect).
         CComPtr<IMFGetService> pGS;
         if (SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
             CComPtr<IDirect3DSurface9> pSurface;
             if (SUCCEEDED(pGS->GetService(MR_BUFFER_SERVICE, IID_PPV_ARGS(&pSurface))) && pSurface) {
-                CComPtr<IDirect3DDevice9> pDev;
-                if (SUCCEEDED(pSurface->GetDevice(&pDev)) && pDev) {
-                    CComPtr<IDirect3DQuery9> pQuery;
-                    if (SUCCEEDED(pDev->CreateQuery(D3DQUERYTYPE_EVENT, &pQuery)) && pQuery) {
-                        pQuery->Issue(D3DISSUE_END);
-                        ULONGLONG startTick = GetTickCount64();
-                        while (pQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) == S_FALSE) {
-                            if (GetTickCount64() - startTick > 50) {
-                                break;
-                            }
-                            SwitchToThread();
-                        }
+                // Adaptive delay: for 24-30 fps, allocate up to 16-20ms for 4K CTU decode completion.
+                // For 60 fps, allocate ~8ms. This gives the GPU video decoder ample time to finish
+                // writing the entire 4K frame before EVR Mixer touches it.
+                DWORD delayMs = 15;
+                if (rtStop > rtStart) {
+                    DWORD durMs = (DWORD)((rtStop - rtStart) / 10000);
+                    if (durMs > 0) {
+                        delayMs = std::min<DWORD>(durMs / 2, 20);
+                        delayMs = std::max<DWORD>(delayMs, 8);
                     }
                 }
+                Sleep(delayMs);
             }
         }
     }
