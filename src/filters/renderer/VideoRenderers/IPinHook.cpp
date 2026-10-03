@@ -153,13 +153,30 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
     }
 
     if (pSample) {
+        // Synchronize DXVA2 hardware decoder (e.g. NVDEC) before delivering the surface to EVR Mixer.
+        // In Direct3D9, IDirectXVideoDecoder decoding is asynchronous. If EVR Mixer's worker thread
+        // issues VideoProcessBlt before NVDEC finishes decoding all CTUs of the frame, the bottom-right
+        // region of the surface still contains leftover pixels from a previous cycle in the DXVA2 surface
+        // pool, producing diagonal staircase tearing artifacts (especially on repeat loops and seeks).
+        // Issuing a D3DQUERYTYPE_EVENT with D3DISSUE_END and waiting with D3DGETDATA_FLUSH guarantees
+        // the GPU decoder has fully written the surface before EVR Mixer starts blending it.
         CComPtr<IMFGetService> pGS;
         if (SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
             CComPtr<IDirect3DSurface9> pSurface;
             if (SUCCEEDED(pGS->GetService(MR_BUFFER_SERVICE, IID_PPV_ARGS(&pSurface))) && pSurface) {
-                D3DLOCKED_RECT lr;
-                if (SUCCEEDED(pSurface->LockRect(&lr, nullptr, D3DLOCK_READONLY))) {
-                    pSurface->UnlockRect();
+                CComPtr<IDirect3DDevice9> pDev;
+                if (SUCCEEDED(pSurface->GetDevice(&pDev)) && pDev) {
+                    CComPtr<IDirect3DQuery9> pQuery;
+                    if (SUCCEEDED(pDev->CreateQuery(D3DQUERYTYPE_EVENT, &pQuery)) && pQuery) {
+                        pQuery->Issue(D3DISSUE_END);
+                        ULONGLONG startTick = GetTickCount64();
+                        while (pQuery->GetData(nullptr, 0, D3DGETDATA_FLUSH) == S_FALSE) {
+                            if (GetTickCount64() - startTick > 50) {
+                                break;
+                            }
+                            SwitchToThread();
+                        }
+                    }
                 }
             }
         }
