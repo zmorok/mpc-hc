@@ -73,7 +73,12 @@ interface IMemInputPinC
 };
 
 extern bool HookNewSegment(IPinC* pPinC);
-extern bool HookReceive(IMemInputPinC* pMemInputPin);
+extern bool HookReceive(IMemInputPinC* pMemInputPin, bool retainNativeSamples = false);
+extern bool HasNativeSamples();
+extern void MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime);
+extern void ReleaseNativeSamplesBefore(REFERENCE_TIME sampleTime);
+extern void FailNativeSamples(HRESULT error);
+extern void ClearNativeSamples();
 extern void UnhookNewSegment();
 extern void UnhookReceive();
 extern REFERENCE_TIME g_tSegmentStart, g_tSampleStart, g_rtTimePerFrame;

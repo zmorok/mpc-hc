@@ -25,6 +25,7 @@
 #include <dxva.h>
 #include <dxva2api.h>
 #include <evr.h>
+#include <afxmt.h>
 #include "moreuuids.h"
 
 #include "IPinHook.h"
@@ -115,6 +116,29 @@ LPCTSTR FindD3DFormat(const D3DFORMAT Format)
 }
 
 // === DirectShow hooks
+static void SetNativeSampleFlushing(bool flushing);
+static HRESULT(STDMETHODCALLTYPE* BeginFlushOrg)(IPinC* This) = nullptr;
+static HRESULT(STDMETHODCALLTYPE* EndFlushOrg)(IPinC* This) = nullptr;
+
+static HRESULT STDMETHODCALLTYPE BeginFlushMine(IPinC* This)
+{
+    if (g_pPinC_NewSegment == This) {
+        // Wake a blocked producer before EVR waits for its streaming thread.
+        // The presenter keeps the samples until the mixer finishes its read.
+        SetNativeSampleFlushing(true);
+    }
+    return BeginFlushOrg(This);
+}
+
+static HRESULT STDMETHODCALLTYPE EndFlushMine(IPinC* This)
+{
+    const HRESULT hr = EndFlushOrg(This);
+    if (g_pPinC_NewSegment == This && SUCCEEDED(hr)) {
+        SetNativeSampleFlushing(false);
+    }
+    return hr;
+}
+
 static HRESULT(STDMETHODCALLTYPE* NewSegmentOrg)(IPinC* This, /* [in] */ REFERENCE_TIME tStart, /* [in] */ REFERENCE_TIME tStop, /* [in] */ double dRate) = nullptr;
 
 static HRESULT STDMETHODCALLTYPE NewSegmentMine(IPinC* This, /* [in] */ REFERENCE_TIME tStart, /* [in] */ REFERENCE_TIME tStop, /* [in] */ double dRate)
@@ -144,42 +168,132 @@ static HRESULT STDMETHODCALLTYPE ReceiveConnectionMine(IPinC* This, /* [in] */ I
 
 
 static HRESULT(STDMETHODCALLTYPE* ReceiveOrg)(IMemInputPinC* This, IMediaSample* pSample) = nullptr;
+static HRESULT(STDMETHODCALLTYPE* ReceiveCanBlockOrg)(IMemInputPinC* This) = nullptr;
+
+static CCritSec g_nativeSampleLock;
+static bool g_retainNativeSamples = false;
+static IMemInputPinC* g_pNativeInputPin = nullptr;
+static bool g_nativeSampleFlushing = false;
+static HRESULT g_nativeSampleError = S_OK;
+static CEvent g_nativeSampleChanged(FALSE, FALSE);
+struct NativeSample {
+    CComPtr<IMediaSample> sample;
+    REFERENCE_TIME time;
+    bool processed = false;
+};
+static std::vector<NativeSample> g_nativeSamples;
+
+static void SetNativeSampleFlushing(bool flushing)
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_nativeSampleFlushing = flushing;
+    g_nativeSampleChanged.SetEvent();
+}
+
+bool HasNativeSamples()
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    return !g_nativeSamples.empty();
+}
+
+void FailNativeSamples(HRESULT error)
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_nativeSampleError = error;
+    g_nativeSampleChanged.SetEvent();
+}
+
+void MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime)
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    for (auto& sample : g_nativeSamples) {
+        if (sample.time <= sampleTime) {
+            sample.processed = true;
+        }
+    }
+    g_nativeSampleChanged.SetEvent();
+}
+
+void ReleaseNativeSamplesBefore(REFERENCE_TIME sampleTime)
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_nativeSamples.erase(std::remove_if(g_nativeSamples.begin(), g_nativeSamples.end(),
+        [sampleTime](const NativeSample& sample) { return sample.time < sampleTime; }), g_nativeSamples.end());
+    g_nativeSampleChanged.SetEvent();
+}
+
+void ClearNativeSamples()
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_nativeSamples.clear();
+    g_nativeSampleError = S_OK;
+    g_nativeSampleChanged.SetEvent();
+}
+
+static HRESULT STDMETHODCALLTYPE ReceiveCanBlockMine(IMemInputPinC* This)
+{
+    return g_retainNativeSamples && This == g_pNativeInputPin ? S_OK : ReceiveCanBlockOrg(This);
+}
 
 static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* pSample)
 {
     REFERENCE_TIME rtStart = 0, rtStop = 0;
-    if (pSample && SUCCEEDED(pSample->GetTime(&rtStart, &rtStop))) {
+    const bool hasTime = pSample && SUCCEEDED(pSample->GetTime(&rtStart, &rtStop));
+    if (hasTime) {
         g_tSampleStart = rtStart;
     }
 
-    if (pSample) {
-        // Detect DXVA2 hardware decode surfaces (e.g. NVDEC).
-        // NVDEC decodes macroblock rows asynchronously on the GPU video engine.
-        // EVR Mixer runs VideoProcessBlt on a high-frequency worker thread. Without a sufficient
-        // decode completion window, VideoProcessBlt reads the surface while NVDEC is still decoding,
-        // blending partially decoded CTU macroblocks with leftover pixels from a previous cycle in the
-        // surface pool (the diagonal "staircase" tearing defect).
+    bool retained = false;
+    if (g_retainNativeSamples && This == g_pNativeInputPin && hasTime
+            && rtStop > 0 && pSample->IsPreroll() != S_OK) {
         CComPtr<IMFGetService> pGS;
         if (SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
             CComPtr<IDirect3DSurface9> pSurface;
             if (SUCCEEDED(pGS->GetService(MR_BUFFER_SERVICE, IID_PPV_ARGS(&pSurface))) && pSurface) {
-                // Adaptive delay: for 24-30 fps, allocate up to 16-20ms for 4K CTU decode completion.
-                // For 60 fps, allocate ~8ms. This gives the GPU video decoder ample time to finish
-                // writing the entire 4K frame before EVR Mixer touches it.
-                DWORD delayMs = 15;
-                if (rtStop > rtStart) {
-                    DWORD durMs = (DWORD)((rtStop - rtStart) / 10000);
-                    if (durMs > 0) {
-                        delayMs = std::min<DWORD>(durMs / 2, 20);
-                        delayMs = std::max<DWORD>(delayMs, 8);
-                    }
+                // A surface reference alone does not reserve the decoder allocator's
+                // slot. Keep its media sample until the mixer's GPU read completes.
+                CAutoLock lock(&g_nativeSampleLock);
+                if (g_nativeSampleFlushing) {
+                    return S_FALSE;
                 }
-                Sleep(delayMs);
+                if (FAILED(g_nativeSampleError)) {
+                    return g_nativeSampleError;
+                }
+                g_nativeSamples.push_back({pSample, rtStart});
+                retained = true;
             }
         }
     }
 
-    return ReceiveOrg(This, pSample);
+    HRESULT hr = ReceiveOrg(This, pSample);
+    if (retained && hr == S_OK) {
+        // Let the next input arrive once the mixer has submitted this one.
+        // Its allocator sample remains retained until GPU completion; waiting
+        // for that completion here would serialize decode and processing.
+        for (;;) {
+            {
+                CAutoLock lock(&g_nativeSampleLock);
+                if (g_nativeSampleFlushing) {
+                    return S_FALSE;
+                }
+                if (FAILED(g_nativeSampleError)) {
+                    return g_nativeSampleError;
+                }
+                auto it = std::find_if(g_nativeSamples.begin(), g_nativeSamples.end(),
+                    [pSample](const NativeSample& sample) { return sample.sample == pSample; });
+                if (it == g_nativeSamples.end() || it->processed) {
+                    break;
+                }
+            }
+            WaitForSingleObject(g_nativeSampleChanged, 10);
+        }
+    }
+    if (retained && hr != S_OK) {
+        CAutoLock lock(&g_nativeSampleLock);
+        g_nativeSamples.erase(std::remove_if(g_nativeSamples.begin(), g_nativeSamples.end(),
+            [pSample](const NativeSample& sample) { return sample.sample == pSample; }), g_nativeSamples.end());
+    }
+    return hr;
 }
 
 bool HookReceiveConnection(IBaseFilter* pBF)
@@ -238,11 +352,19 @@ void UnhookNewSegment()
             if (g_pPinCVtbl_NewSegment->NewSegment == NewSegmentMine) {
                 g_pPinCVtbl_NewSegment->NewSegment = NewSegmentOrg;
             }
+            if (g_pPinCVtbl_NewSegment->BeginFlush == BeginFlushMine) {
+                g_pPinCVtbl_NewSegment->BeginFlush = BeginFlushOrg;
+            }
+            if (g_pPinCVtbl_NewSegment->EndFlush == EndFlushMine) {
+                g_pPinCVtbl_NewSegment->EndFlush = EndFlushOrg;
+            }
             FlushInstructionCache(GetCurrentProcess(), g_pPinCVtbl_NewSegment, sizeof(IPinCVtbl));
             VirtualProtect(g_pPinCVtbl_NewSegment, sizeof(IPinCVtbl), flOldProtect, &flOldProtect);
             g_pPinCVtbl_NewSegment = nullptr;
             g_pPinC_NewSegment = nullptr;
             NewSegmentOrg = nullptr;
+            BeginFlushOrg = nullptr;
+            EndFlushOrg = nullptr;
         } else {
             TRACE(_T("UnhookNewSegment: Could not unhook g_pPinCVtbl VTable"));
             ASSERT(FALSE);
@@ -252,6 +374,9 @@ void UnhookNewSegment()
 
 void UnhookReceive()
 {
+    g_retainNativeSamples = false;
+    g_pNativeInputPin = nullptr;
+    ClearNativeSamples();
     // Unhook previous VTables
     if (g_pMemInputPinCVtbl) {
         DWORD flOldProtect = 0;
@@ -259,10 +384,14 @@ void UnhookReceive()
             if (g_pMemInputPinCVtbl->Receive == ReceiveMine) {
                 g_pMemInputPinCVtbl->Receive = ReceiveOrg;
             }
+            if (g_pMemInputPinCVtbl->ReceiveCanBlock == ReceiveCanBlockMine) {
+                g_pMemInputPinCVtbl->ReceiveCanBlock = ReceiveCanBlockOrg;
+            }
             FlushInstructionCache(GetCurrentProcess(), g_pMemInputPinCVtbl, sizeof(IMemInputPinCVtbl));
             VirtualProtect(g_pMemInputPinCVtbl, sizeof(IMemInputPinCVtbl), flOldProtect, &flOldProtect);
             g_pMemInputPinCVtbl = nullptr;
             ReceiveOrg = nullptr;
+            ReceiveCanBlockOrg = nullptr;
         } else {
             TRACE(_T("UnhookReceive: Could not unhook g_pMemInputPinCVtbl VTable"));
             ASSERT(FALSE);
@@ -283,6 +412,10 @@ bool HookNewSegment(IPinC* pPinC)
         if (NewSegmentOrg == nullptr) {
             NewSegmentOrg = pPinC->lpVtbl->NewSegment;
         }
+        BeginFlushOrg = pPinC->lpVtbl->BeginFlush;
+        EndFlushOrg = pPinC->lpVtbl->EndFlush;
+        pPinC->lpVtbl->BeginFlush = BeginFlushMine;
+        pPinC->lpVtbl->EndFlush = EndFlushMine;
         pPinC->lpVtbl->NewSegment = NewSegmentMine; // Function sets global variable(s)
         FlushInstructionCache(GetCurrentProcess(), pPinC->lpVtbl, sizeof(IPinCVtbl));
         VirtualProtect(pPinC->lpVtbl, sizeof(IPinCVtbl), flOldProtect, &flOldProtect);
@@ -297,7 +430,7 @@ bool HookNewSegment(IPinC* pPinC)
     return false;
 }
 
-bool HookReceive(IMemInputPinC* pMemInputPinC)
+bool HookReceive(IMemInputPinC* pMemInputPinC, bool retainNativeSamples)
 {
     if (!pMemInputPinC || g_pMemInputPinCVtbl) {
         return false;
@@ -306,9 +439,14 @@ bool HookReceive(IMemInputPinC* pMemInputPinC)
     DWORD flOldProtect = 0;
     if (VirtualProtect(pMemInputPinC->lpVtbl, sizeof(IMemInputPinCVtbl), PAGE_EXECUTE_WRITECOPY, &flOldProtect)) {
         g_tSampleStart = 0;
+        g_retainNativeSamples = retainNativeSamples;
+        g_pNativeInputPin = pMemInputPinC;
+        SetNativeSampleFlushing(false);
         if (ReceiveOrg == nullptr) {
             ReceiveOrg = pMemInputPinC->lpVtbl->Receive;
         }
+        ReceiveCanBlockOrg = pMemInputPinC->lpVtbl->ReceiveCanBlock;
+        pMemInputPinC->lpVtbl->ReceiveCanBlock = ReceiveCanBlockMine;
         pMemInputPinC->lpVtbl->Receive = ReceiveMine; // Function sets global variable(s)
         FlushInstructionCache(GetCurrentProcess(), pMemInputPinC->lpVtbl, sizeof(IMemInputPinCVtbl));
         VirtualProtect(pMemInputPinC->lpVtbl, sizeof(IMemInputPinCVtbl), flOldProtect, &flOldProtect);

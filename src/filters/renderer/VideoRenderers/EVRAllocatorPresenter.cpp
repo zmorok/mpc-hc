@@ -294,7 +294,7 @@ STDMETHODIMP CEVRAllocatorPresenter::CreateRenderer(IUnknown** ppRenderer)
                 m_bHookedNewSegment = true;
             };
             CComQIPtr<IMemInputPin> pMemInputPin = pPin;
-            if (HookReceive((IMemInputPinC*)(IMemInputPin*)pMemInputPin)) {
+            if (HookReceive((IMemInputPinC*)(IMemInputPin*)pMemInputPin, true)) {
                 m_bHookedReceive = true;
             }
         }
@@ -376,8 +376,6 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStart(MFTIME hnsSystemTime, LONGLONG
     TRACE_EVR("EVR: OnClockStart  hnsSystemTime = %I64d,   llClockStartOffset = %I64d\n", hnsSystemTime, llClockStartOffset);
     m_ModeratedTimeLast  = -1;
     m_ModeratedClockLast = -1;
-    m_bPostFlushSeek = false;
-    m_llSeekClockOffset = 0;
 
     return S_OK;
 }
@@ -392,8 +390,6 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStop(MFTIME hnsSystemTime)
 
     m_ModeratedClockLast = -1;
     m_ModeratedTimeLast  = -1;
-    m_bPostFlushSeek = false;
-    m_llSeekClockOffset = 0;
     return S_OK;
 }
 
@@ -1089,8 +1085,43 @@ HRESULT CEVRAllocatorPresenter::RenegotiateMediaType()
     return hr;
 }
 
+HRESULT CEVRAllocatorPresenter::CompleteNativeReads(bool wait)
+{
+    if (m_bNativeReadFailed) {
+        return E_FAIL;
+    }
+    while (!m_NativeReads.IsEmpty()) {
+        const auto& read = m_NativeReads.GetHead();
+        HRESULT hr = read.completion->GetData(nullptr, 0, D3DGETDATA_FLUSH);
+        if (hr == S_FALSE) {
+            if (GetTickCount64() - read.submitted >= 2000) {
+                hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+            } else if (wait) {
+                Sleep(1);
+                continue;
+            } else {
+                return S_OK;
+            }
+        }
+        if (FAILED(hr)) {
+            m_bNativeReadFailed = true;
+            FailNativeSamples(hr);
+            if (m_pSink) {
+                m_pSink->Notify(EC_ERRORABORT, hr, 0);
+            }
+            return hr;
+        }
+        ReleaseNativeSamplesBefore(read.time);
+        m_NativeReads.RemoveHead();
+    }
+    return S_OK;
+}
+
 bool CEVRAllocatorPresenter::GetImageFromMixer()
 {
+    if (FAILED(CompleteNativeReads(false))) {
+        return false;
+    }
     MFT_OUTPUT_DATA_BUFFER dataBuffer;
     HRESULT hr = S_OK;
     DWORD dwStatus;
@@ -1108,6 +1139,10 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
     };
 
     while (SUCCEEDED(hr)) {
+        // Bound outstanding reads by the presenter's existing surface pool.
+        if (m_NativeReads.GetCount() >= m_nNbDXSurface) {
+            break;
+        }
         CComPtr<IMFSample> pSample;
 
         if (FAILED(GetFreeSample(&pSample))) {
@@ -1129,11 +1164,23 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
             llClockAfter = GetRenderersData()->GetPerfCounter();
         }
 
-        if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+        if (FAILED(hr)) {
             AddToFreeList(pSample, false);
             pSample = nullptr; // The sample should not be used after being queued
             // Important: Release any events returned from the ProcessOutput method.
             SAFE_RELEASE(dataBuffer.pEvents);
+            if (HasNativeSamples()) {
+                if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
+                    m_bPendingRenegotiate = true;
+                } else if (hr != MF_E_TRANSFORM_NEED_MORE_INPUT && hr != MF_E_TRANSFORM_TYPE_NOT_SET) {
+                    // A fatal mixer error must also wake the input's Receive.
+                    m_bNativeReadFailed = true;
+                    FailNativeSamples(hr);
+                    if (m_pSink) {
+                        m_pSink->Notify(EC_ERRORABORT, hr, 0);
+                    }
+                }
+            }
             break;
         }
 
@@ -1143,7 +1190,35 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
             m_pSink->Notify(EC_PROCESSING_LATENCY, (LONG_PTR)&llMixerLatency, 0);
         }
 
-        pSample->GetSampleTime(&nsSampleTime);
+        nsSampleTime = 0;
+        const HRESULT sampleTimeResult = pSample->GetSampleTime(&nsSampleTime);
+        if (HasNativeSamples()) {
+            // ProcessOutput submits an asynchronous GPU read of the decoder's
+            // input. Only completion of that read permits allocator slot reuse.
+            CComPtr<IDirect3DQuery9> completion;
+            hr = sampleTimeResult;
+            if (SUCCEEDED(hr)) {
+                hr = m_pD3DDev->CreateQuery(D3DQUERYTYPE_EVENT, &completion);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = completion->Issue(D3DISSUE_END);
+            }
+            if (FAILED(hr)) {
+                m_bNativeReadFailed = true;
+                FailNativeSamples(hr);
+                AddToFreeList(pSample, false);
+                pSample = nullptr;
+                SAFE_RELEASE(dataBuffer.pEvents);
+                if (m_pSink) {
+                    m_pSink->Notify(EC_ERRORABORT, hr, 0);
+                }
+                break;
+            }
+            // Poll completion on later mixer iterations so decode, processing
+            // and presentation can overlap. The media samples stay reserved.
+            m_NativeReads.AddTail({completion, nsSampleTime, GetTickCount64()});
+            MarkNativeSamplesProcessed(nsSampleTime);
+        }
         REFERENCE_TIME nsDuration;
         pSample->GetSampleDuration(&nsDuration);
 
@@ -2003,7 +2078,6 @@ void CEVRAllocatorPresenter::OnVBlankFinished(bool bAll, LONGLONG PerformanceCou
     } else {
         llClockTime = m_StarvationClock;
     }
-    llClockTime -= m_llSeekClockOffset;
 
     if (SUCCEEDED(m_pCurrentlyDisplayedSample->GetSampleDuration(&SampleDuration))) {
         // Some filters return invalid values, ignore them
@@ -2244,15 +2318,16 @@ void CEVRAllocatorPresenter::RenderThread()
                             m_pcFrames++;
                             bStepForward = true;
                             m_nStepCount = 0;
-                            /*
-                            } else if (m_nStepCount > 0) {
-                                ++m_OrderedPaint;
-                                SubPicSetTime();
-                                Paint(pMFSample);
-                                m_nDroppedUpdate = 0;
-                                CompleteFrameStep(false);
-                                bStepForward = true;
-                            */
+                        } else if (m_nStepCount > 0) {
+                            // A requested step consumes the next sample, even if
+                            // the running clock has advanced beyond its timestamp.
+                            // Real-time scheduling can otherwise skip high-fps frames.
+                            ++m_OrderedPaint;
+                            SubPicSetTime();
+                            Paint(pMFSample);
+                            m_nDroppedUpdate = 0;
+                            CompleteFrameStep(false);
+                            bStepForward = true;
                         } else if (m_nRenderState == Started) {
                             LONGLONG CurrentCounter = GetRenderersData()->GetPerfCounter();
                             // Calculate wake up timer
@@ -2262,16 +2337,6 @@ void CEVRAllocatorPresenter::RenderThread()
                             } else {
                                 llClockTime = m_StarvationClock;
                             }
-
-                            if (m_bPostFlushSeek) {
-                                m_bPostFlushSeek = false;
-                                if (bValidSampleTime && llClockTime > nsSampleTime) {
-                                    m_llSeekClockOffset = llClockTime - nsSampleTime;
-                                } else {
-                                    m_llSeekClockOffset = 0;
-                                }
-                            }
-                            llClockTime -= m_llSeekClockOffset;
 
                             if (!bValidSampleTime) {
                                 // Just play as fast as possible
@@ -2696,10 +2761,11 @@ void CEVRAllocatorPresenter::OnResetDevice()
 
 void CEVRAllocatorPresenter::RemoveAllSamples()
 {
-    CAutoLock imageProcesssingLock(&m_ImageProcessingLock);
-    CAutoLock sampleQueueLock(&m_SampleQueueLock);
+    CAutoLock lock(this);
+    CAutoLock imageProcessingLock(&m_ImageProcessingLock);
 
     FlushSamples();
+    CAutoLock sampleQueueLock(&m_SampleQueueLock);
     m_FreeSamples.RemoveAll();
     m_LastScheduledUncorrectedSampleTime = -1;
     m_nUsedBuffer = 0;
@@ -2980,20 +3046,23 @@ void CEVRAllocatorPresenter::AddToScheduledList(IMFSample* pSample, bool bSorted
 
 void CEVRAllocatorPresenter::FlushSamples()
 {
+    // Match device initialization's presenter -> mixer lock order.
     CAutoLock lock(this);
+    CAutoLock mixerLock(&m_ImageProcessingLock);
+    CompleteNativeReads(true);
+    m_NativeReads.RemoveAll();
+
     CAutoLock lock2(&m_SampleQueueLock);
     CAutoLock lock3(&m_RenderLock);
-
     m_pCurrentlyDisplayedSample = nullptr;
     m_ScheduledSamples.RemoveAll();
+    ClearNativeSamples();
+    m_bNativeReadFailed = false;
 
     m_LastSampleOffset = 0;
     m_bLastSampleOffsetValid = false;
     m_bSignaledStarvation = false;
     m_LastScheduledSampleTime = -1;
-
-    m_bPostFlushSeek = true;
-    m_llSeekClockOffset = 0;
 }
 
 HRESULT CEVRAllocatorPresenter::TrackSample(IMFSample* pSample)

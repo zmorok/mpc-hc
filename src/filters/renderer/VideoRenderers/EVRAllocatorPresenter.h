@@ -176,6 +176,14 @@ namespace DSObjects
         CComPtr<IMFClock>                m_pClock;
         CComPtr<IDirect3DDeviceManager9> m_pD3DManager;
         CComPtr<IMFTransform>            m_pMixer;
+        struct NativeRead {
+            CComPtr<IDirect3DQuery9> completion;
+            REFERENCE_TIME time;
+            ULONGLONG submitted;
+        };
+        CAtlList<NativeRead>              m_NativeReads;
+        bool                             m_bNativeReadFailed = false;
+        HRESULT CompleteNativeReads(bool wait);
         CComPtr<IMediaEventSink>         m_pSink;
         CComPtr<IMFMediaType>            m_pMediaType;
         MFVideoAspectRatioMode           m_dwVideoAspectRatioMode;
@@ -187,8 +195,6 @@ namespace DSObjects
         bool                             m_bEvtQuit;
         HANDLE                           m_hEvtFlush;        // Discard all buffers
         bool                             m_bEvtFlush;
-        bool                             m_bPostFlushSeek = false;
-        LONGLONG                         m_llSeekClockOffset = 0;
 
         bool                             m_fUseInternalTimer;
         INT32                            m_LastSetOutputRange;
