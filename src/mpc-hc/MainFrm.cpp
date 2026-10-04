@@ -3332,8 +3332,9 @@ bool CMainFrame::CheckABRepeat(REFERENCE_TIME& aPos, REFERENCE_TIME& bPos) {
 //
 // graph event EC_COMPLETE handler
 //
-void CMainFrame::GraphEventComplete()
+void CMainFrame::GraphEventComplete(bool fromGraphEvent /*= true*/)
 {
+    CDeferredActionScope actionScope(*this);
     CAppSettings& s = AfxGetAppSettings();
 
     if (m_fFrameSteppingActive) {
@@ -3347,8 +3348,33 @@ void CMainFrame::GraphEventComplete()
         return;
     }
 
-    if (GetPlaybackMode() == PM_FILE && GetMediaState() != State_Running) {
-        // A paused seek to EOF must not start the repeat/playlist actions.
+    const OAFilterState state = GetMediaState();
+    if (GetPlaybackMode() == PM_FILE && state != State_Running) {
+        // A completion from a running period can arrive after the user's Pause.
+        // Repeat the file without overriding that pause. A manual seek to EOF
+        // has no completed running period and must keep its requested position.
+        if (fromGraphEvent && state == State_Paused && !m_fEndOfStream && !abRepeat && m_pMS
+                && !(s.nCLSwitches & CLSW_AFTERPLAYBACK_MASK)
+                && (s.eLoopMode == CAppSettings::LoopMode::FILE || m_wndPlaylistBar.GetCount() == 1)
+                && (s.fLoopForever || m_nLoops + 1 < s.nLoops) && !IsImageFile(lastOpenFile)) {
+            const ULONGLONG serial = m_playbackStateSerial;
+            REFERENCE_TIME position = 0, duration = 0;
+            const REFTIME frameTime = m_fAudioOnly ? 0.0 : GetAvgTimePerFrame();
+            const REFERENCE_TIME margin = std::max<REFERENCE_TIME>(10000LL,
+                std::isfinite(frameTime) && frameTime > 0.0 ? std::llround(frameTime * 10000000.0) : 0LL);
+            if (SUCCEEDED(m_pMS->GetCurrentPosition(&position)) && SUCCEEDED(m_pMS->GetDuration(&duration))
+                    && duration > 0 && position >= duration - margin) {
+                if (serial != m_playbackStateSerial) {
+                    return;
+                }
+                ++m_nLoops;
+                DoSeekTo(0, false);
+                return;
+            }
+            if (serial != m_playbackStateSerial) {
+                return;
+            }
+        }
         m_fEndOfStream = true;
         return;
     }
@@ -20544,7 +20570,7 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
             m_OSD.DisplayMessage(OSD_TOPLEFT, m_wndStatusBar.GetStatusTimer(), 1500);
         }
         if (force_complete) {
-            GraphEventComplete();
+            GraphEventComplete(false);
             return;
         }
     }

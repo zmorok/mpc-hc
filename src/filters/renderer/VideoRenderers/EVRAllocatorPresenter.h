@@ -200,7 +200,8 @@ namespace DSObjects
         bool                             m_fUseInternalTimer;
         INT32                            m_LastSetOutputRange;
         std::atomic_bool                 m_bPendingRenegotiate;
-        bool                             m_bPendingMediaFinished;
+        std::atomic_bool                 m_bEndOfStream;
+        std::atomic_bool                 m_bEndOfStreamNotified;
 
         HANDLE                           m_hThread;
         HANDLE                           m_hGetMixerThread;
@@ -229,7 +230,7 @@ namespace DSObjects
         UINT                             m_nResetToken;
         int                              m_nStepCount;
 
-        bool                             m_bSignaledStarvation;
+        std::atomic_bool                 m_bSignaledStarvation;
         LONGLONG                         m_StarvationClock;
 
         // Stats variable for IQualProp

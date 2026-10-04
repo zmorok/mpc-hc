@@ -758,7 +758,7 @@ protected:
     void SetDispMode(CString displayName, const DisplayMode& dm, int msAudioDelay);
     void AutoChangeMonitorMode();
 
-    void GraphEventComplete();
+    void GraphEventComplete(bool fromGraphEvent = true);
 
     friend class CGraphThread;
     CGraphThread* m_pGraphThread;

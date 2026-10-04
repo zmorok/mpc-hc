@@ -88,7 +88,8 @@ CEVRAllocatorPresenter::CEVRAllocatorPresenter(HWND hWnd, bool bFullscreen, HRES
     , m_fUseInternalTimer(false)
     , m_LastSetOutputRange(-1)
     , m_bPendingRenegotiate(false)
-    , m_bPendingMediaFinished(false)
+    , m_bEndOfStream(false)
+    , m_bEndOfStreamNotified(false)
     , m_hThread(nullptr)
     , m_hGetMixerThread(nullptr)
     , m_hVSyncThread(nullptr)
@@ -374,6 +375,9 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStart(MFTIME hnsSystemTime, LONGLONG
     HRESULT hr;
     CHECK_HR(CheckShutdown());
 
+    // The graph resets renderer completion when playback resumes from pause.
+    // Retain EOS until flush, and report it again for this running period.
+    m_bEndOfStreamNotified = false;
     m_nRenderState = Started;
 
     TRACE_EVR("EVR: OnClockStart  hnsSystemTime = %I64d,   llClockStartOffset = %I64d\n", hnsSystemTime, llClockStartOffset);
@@ -419,6 +423,7 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockRestart(MFTIME hnsSystemTime)
     HRESULT hr;
     CHECK_HR(CheckShutdown());
 
+    m_bEndOfStreamNotified = false;
     m_nRenderState = Started;
 
     m_ModeratedTimeLast  = -1;
@@ -439,7 +444,7 @@ bool CEVRAllocatorPresenter::GetState(DWORD dwMilliSecsTimeout, FILTER_STATE* St
 {
     CAutoLock lock(&m_SampleQueueLock);
 
-    if (m_bSignaledStarvation) {
+    if (m_bSignaledStarvation && !m_bEndOfStream) {
         size_t nSamples = std::max(m_nNbDXSurface / 2, 1);
         if ((m_ScheduledSamples.GetCount() < nSamples
                 || (m_nRenderState == Started && m_LastSampleOffset < -m_rtTimePerFrame * 2)) && !g_bNoDuration) {
@@ -447,6 +452,9 @@ bool CEVRAllocatorPresenter::GetState(DWORD dwMilliSecsTimeout, FILTER_STATE* St
             _ReturnValue = VFW_S_STATE_INTERMEDIATE;
             return true;
         }
+        m_bSignaledStarvation = false;
+    }
+    if (m_bEndOfStream) {
         m_bSignaledStarvation = false;
     }
     return false;
@@ -613,7 +621,9 @@ STDMETHODIMP CEVRAllocatorPresenter::ProcessMessage(MFVP_MESSAGE_TYPE eMessage, 
 
         case MFVP_MESSAGE_ENDOFSTREAM:              // All input streams have ended.
             TRACE_EVR("EVR: MFVP_MESSAGE_ENDOFSTREAM\n");
-            m_bPendingMediaFinished = true;
+            m_bEndOfStreamNotified = false;
+            m_bEndOfStream = true;
+            m_bSignaledStarvation = false;
             if (m_bHookedReceive) {
                 // Seeking to EOF may have no new frame to complete preroll.
                 MarkEVRMixerReady();
@@ -2234,10 +2244,9 @@ void CEVRAllocatorPresenter::RenderThread()
     VERIFY(timeBeginPeriod(dwResolution) == 0);
 
     auto checkPendingMediaFinished = [this]() {
-        if (m_bPendingMediaFinished && (m_nRenderState == Started || m_nStepCount > 0)) {
+        if (m_bEndOfStream && (m_nRenderState == Started || m_nStepCount > 0)) {
             CAutoLock lock(&m_SampleQueueLock);
-            if (m_ScheduledSamples.IsEmpty()) {
-                m_bPendingMediaFinished = false;
+            if (m_ScheduledSamples.IsEmpty() && !m_bEndOfStreamNotified.exchange(true)) {
                 m_pSink->Notify(EC_COMPLETE, 0, 0);
                 TRACE_EVR("EVR: send EC_COMPLETE\n");
             }
@@ -2368,7 +2377,14 @@ void CEVRAllocatorPresenter::RenderThread()
                                 if (m_bHookedReceive) {
                                     const UINT refreshRate = std::max<UINT>(m_refreshRate, 1);
                                     if (!m_bSignaledStarvation && m_rtTimePerFrame > 0 && m_rtTimePerFrame < 10000000LL / refreshRate) {
-                                        SetNativeSampleDeadline(llClockTime - m_rtTimePerFrame, (1000 + refreshRate - 1) / refreshRate);
+                                        // A high-refresh display can otherwise keep the
+                                        // mixer busy converting pictures that are already late.
+                                        // Reduce conversion cadence only while catching up.
+                                        const LONGLONG lateness = llClockTime - nsSampleTime;
+                                        const UINT catchUpRate = lateness > 2500000LL ? std::min<UINT>(refreshRate, 15)
+                                            : lateness > 1000000LL ? std::min<UINT>(refreshRate, 20)
+                                            : lateness > 333333LL ? std::min<UINT>(refreshRate, 60) : refreshRate;
+                                        SetNativeSampleDeadline(llClockTime - m_rtTimePerFrame, (1000 + catchUpRate - 1) / catchUpRate);
                                     } else {
                                         SetNativeSampleDeadline(-1);
                                     }
@@ -2582,13 +2598,19 @@ void CEVRAllocatorPresenter::RenderThread()
                         }
 
                         bForcePaint = false;
-                    } else if (m_bLastSampleOffsetValid && m_LastSampleOffset < -10000000) { // Only starve if we are 1 seconds behind
-                        if (m_nRenderState == Started && !g_bNoDuration) {
+                    } else {
+                        // An exhausted stream cannot recover by filling the queue.
+                        checkPendingMediaFinished();
+                        const bool droppingLateNativeFrames = m_bHookedReceive && m_rtTimePerFrame > 0
+                            && m_rtTimePerFrame < 10000000LL / std::max<UINT>(m_refreshRate, 1);
+                        if (!m_bEndOfStream && !droppingLateNativeFrames
+                                && m_bLastSampleOffsetValid && m_LastSampleOffset < -10000000
+                                && m_nRenderState == Started && !g_bNoDuration) {
+                            // Keep the live clock for bounded native frame dropping;
+                            // freezing it would disable catch-up and prolong EOF drain.
                             m_pSink->Notify(EC_STARVATION, 0, 0);
                             m_bSignaledStarvation = true;
                         }
-                    } else {
-                        checkPendingMediaFinished();
                     }
                 }
                 //else
@@ -3115,7 +3137,8 @@ void CEVRAllocatorPresenter::FlushSamples()
     m_DetectedFrameTimePos = 0;
     m_DetectedLock = false;
     m_FrameTimeCorrection = 0;
-    m_bPendingMediaFinished = false;
+    m_bEndOfStream = false;
+    m_bEndOfStreamNotified = false;
 }
 
 HRESULT CEVRAllocatorPresenter::TrackSample(IMFSample* pSample)
