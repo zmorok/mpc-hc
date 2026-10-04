@@ -194,6 +194,7 @@ namespace DSObjects
         HANDLE                           m_hEvtQuit;         // Stop rendering thread event
         bool                             m_bEvtQuit;
         HANDLE                           m_hEvtFlush;        // Discard all buffers
+        HANDLE                           m_hEvtMixerInput;   // New input is available
         bool                             m_bEvtFlush;
 
         bool                             m_fUseInternalTimer;

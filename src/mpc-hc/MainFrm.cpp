@@ -2968,6 +2968,22 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
         case TIMER_VIDEO_ZOOM_ANIMATION:
             OnInteractiveVideoZoomTimer();
             break;
+        case TIMER_SEEKRESUME:
+            if (m_bResumeAfterSeek && m_pMC && GetLoadState() == MLS::LOADED) {
+                OAFilterState state;
+                const HRESULT hr = m_pMC->GetState(0, &state);
+                if (FAILED(hr)) {
+                    MediaControlPause();
+                } else if (queuedSeek.seekTime == 0 && ((hr == S_OK && IsEVRMixerReady())
+                        || GetTickCount64() - m_seekResumeStarted >= 5000)) {
+                    m_bResumeAfterSeek = false;
+                    KillTimer(TIMER_SEEKRESUME);
+                    MediaControlRun(false, false);
+                }
+            } else {
+                KillTimer(TIMER_SEEKRESUME);
+            }
+            break;
         default:
             if (nIDEvent >= TIMER_ONETIME_START && nIDEvent <= TIMER_ONETIME_END) {
                 m_timerOneTime.NotifySubscribers(nIDEvent);
@@ -10502,6 +10518,8 @@ void CMainFrame::KillTimerDelayedSeek()
 
 void CMainFrame::KillTimersStop()
 {
+    m_bResumeAfterSeek = false;
+    KillTimer(TIMER_SEEKRESUME);
     KillTimerDelayedSeek();
     KillTimer(TIMER_STREAMPOSPOLLER2);
     KillTimer(TIMER_STREAMPOSPOLLER);
@@ -10511,7 +10529,7 @@ void CMainFrame::KillTimersStop()
     MSG msg;
     int pm = 0;
     while ((pm++ < 5) && PeekMessage(&msg, nullptr, WM_TIMER, WM_TIMER, PM_REMOVE)) {
-        if (msg.wParam == TIMER_STREAMPOSPOLLER || msg.wParam == TIMER_STREAMPOSPOLLER2 || msg.wParam == TIMER_STATS || msg.wParam == TIMER_DELAYEDSEEK) {
+        if (msg.wParam == TIMER_STREAMPOSPOLLER || msg.wParam == TIMER_STREAMPOSPOLLER2 || msg.wParam == TIMER_STATS || msg.wParam == TIMER_DELAYEDSEEK || msg.wParam == TIMER_SEEKRESUME) {
             TRACE(L"Purged WM_TIMER during stop, wParam=%llu\n", msg.wParam);
         } else {
             DispatchMessage(&msg);
@@ -13007,11 +13025,24 @@ OAFilterState CMainFrame::UpdateCachedMediaState()
     return m_CachedFilterState;
 }
 
-bool CMainFrame::MediaControlRun(bool waitforcompletion)
+bool CMainFrame::MediaControlRun(bool waitforcompletion, bool waitForPreroll)
 {
     // quartz.dll can pump messages (PeekMessage) inside IMediaControl calls, so a close or
     // open dispatched there is deferred like one from OnTimer
     CDeferredActionScope actionScope(*this);
+    if (waitForPreroll && m_pMC && GetLoadState() == MLS::LOADED
+            && GetMediaState() == State_Paused && !m_fAudioOnly
+            && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM && !IsEVRMixerReady()) {
+        if (!m_bResumeAfterSeek) {
+            m_bResumeAfterSeek = true;
+            m_seekResumeStarted = GetTickCount64();
+        }
+        m_CachedFilterState = State_Running;
+        SetTimer(TIMER_SEEKRESUME, 10, nullptr);
+    }
+    if (m_bResumeAfterSeek) {
+        return true;
+    }
     m_dwLastPause = 0ULL;
     if (m_pMC) {
         m_CachedFilterState = State_Running;
@@ -13032,6 +13063,8 @@ bool CMainFrame::MediaControlRun(bool waitforcompletion)
 bool CMainFrame::MediaControlPause(bool waitforcompletion)
 {
     CDeferredActionScope actionScope(*this);
+    m_bResumeAfterSeek = false;
+    KillTimer(TIMER_SEEKRESUME);
     m_dwLastPause = GetTickCount64();
     if (m_pMC) {
         m_CachedFilterState = State_Paused;
@@ -13052,6 +13085,8 @@ bool CMainFrame::MediaControlPause(bool waitforcompletion)
 bool CMainFrame::MediaControlStop(bool waitforcompletion)
 {
     CDeferredActionScope actionScope(*this);
+    m_bResumeAfterSeek = false;
+    KillTimer(TIMER_SEEKRESUME);
     m_dwLastPause = 0ULL;
     if (m_pMC) {
         m_pMC->GetState(0, &m_CachedFilterState);
@@ -20402,7 +20437,7 @@ REFERENCE_TIME CMainFrame::GetClosestKeyFramePreview(REFERENCE_TIME rtTarget) co
     return GetClosestKeyFrame(rtTarget, 200000000LL, 200000000LL);
 }
 
-void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
+void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/, bool allowDelay /*= true*/)
 {
     if (m_pMS.p == nullptr) {
         ASSERT(false);
@@ -20411,13 +20446,14 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
     ASSERT(lastSeekFinish >= lastSeekStart); // ToDo: remove lastSeekStart variable if no regressions show up
     ULONGLONG curTime = GetTickCount64();
     ULONGLONG ticksSinceLastSeek = curTime - lastSeekFinish;
-    ULONGLONG mindelay = (lastSeekFinish - lastSeekStart) > 40ULL ? 100ULL : 40ULL;
+    const ULONGLONG mindelay = AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM
+        ? 16ULL : ((lastSeekFinish - lastSeekStart) > 40ULL ? 100ULL : 40ULL);
     //ASSERT(rtPos != queuedSeek.rtPos || queuedSeek.seekTime == 0 || (curTime < queuedSeek.seekTime + 500ULL));
 
-    if (ticksSinceLastSeek < mindelay) {
+    if (allowDelay && ticksSinceLastSeek < mindelay) {
         //TRACE(_T("Delay seek: %lu %lu\n"), rtPos, ticksSinceLastSeek);
         queuedSeek = { rtPos, curTime, bShowOSD };
-        SetTimer(TIMER_DELAYEDSEEK, (UINT) (mindelay * 1.25 - ticksSinceLastSeek), nullptr);
+        SetTimer(TIMER_DELAYEDSEEK, (UINT)(mindelay - ticksSinceLastSeek), nullptr);
     } else {
         KillTimerDelayedSeek();
         lastSeekStart = curTime;
@@ -20428,6 +20464,7 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
 
 void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
 {
+    CDeferredActionScope actionScope(*this);
     //TRACE(_T("DoSeekTo: %lu\n"), rtPos);
 
     if (m_pMS.p == nullptr) {
@@ -20487,6 +20524,14 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
     }
 
     if (GetPlaybackMode() == PM_FILE) {
+        if (fs == State_Running && !m_fAudioOnly
+                && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM
+                && SUCCEEDED(m_pMC->Pause())) {
+            // Keep the user's running intent, but let decode preroll complete
+            // before restarting the graph clock. Poll without blocking the UI.
+            m_bResumeAfterSeek = true;
+            m_seekResumeStarted = GetTickCount64();
+        }
         //SleepEx(5000, False); // artificial slow seek for testing purposes
         if (FAILED(m_pMS->SetPositions(&rtPos, AM_SEEKING_AbsolutePositioning, nullptr, AM_SEEKING_NoPositioning))) {
             TRACE(_T("IMediaSeeking SetPositions failure\n"));
@@ -20495,6 +20540,9 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
             }
         }
         UpdateChapterInInfoBar();
+        if (m_bResumeAfterSeek) {
+            SetTimer(TIMER_SEEKRESUME, 10, nullptr);
+        }
         if (fs == State_Stopped) {
             SendMessage(WM_COMMAND, ID_PLAY_PAUSE);
         }

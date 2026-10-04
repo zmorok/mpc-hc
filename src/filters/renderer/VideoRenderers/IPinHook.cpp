@@ -172,6 +172,11 @@ static HRESULT(STDMETHODCALLTYPE* ReceiveCanBlockOrg)(IMemInputPinC* This) = nul
 
 static CCritSec g_nativeSampleLock;
 static bool g_retainNativeSamples = false;
+static bool g_evrMixerReady = false;
+static REFERENCE_TIME g_nativeSampleDeadline = -1;
+static UINT g_nativeRepaintIntervalMs = 0;
+static ULONGLONG g_lastNativeInputTick = 0;
+static bool g_nativeSkippedSamples = false;
 static IMemInputPinC* g_pNativeInputPin = nullptr;
 static bool g_nativeSampleFlushing = false;
 static HRESULT g_nativeSampleError = S_OK;
@@ -180,6 +185,7 @@ struct NativeSample {
     CComPtr<IMediaSample> sample;
     REFERENCE_TIME time;
     bool processed = false;
+    bool discontinuity = false;
 };
 static std::vector<NativeSample> g_nativeSamples;
 
@@ -196,6 +202,25 @@ bool HasNativeSamples()
     return !g_nativeSamples.empty();
 }
 
+bool IsEVRMixerReady()
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    return !g_retainNativeSamples || g_evrMixerReady;
+}
+
+void MarkEVRMixerReady()
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_evrMixerReady = true;
+}
+
+void SetNativeSampleDeadline(REFERENCE_TIME time, UINT repaintIntervalMs)
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_nativeSampleDeadline = time;
+    g_nativeRepaintIntervalMs = repaintIntervalMs;
+}
+
 void FailNativeSamples(HRESULT error)
 {
     CAutoLock lock(&g_nativeSampleLock);
@@ -203,15 +228,18 @@ void FailNativeSamples(HRESULT error)
     g_nativeSampleChanged.SetEvent();
 }
 
-void MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime)
+bool MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime)
 {
     CAutoLock lock(&g_nativeSampleLock);
+    bool discontinuity = false;
     for (auto& sample : g_nativeSamples) {
-        if (sample.time <= sampleTime) {
+        if (!sample.processed && sample.time <= sampleTime) {
             sample.processed = true;
+            discontinuity |= sample.discontinuity;
         }
     }
     g_nativeSampleChanged.SetEvent();
+    return discontinuity;
 }
 
 void ReleaseNativeSamplesBefore(REFERENCE_TIME sampleTime)
@@ -226,6 +254,10 @@ void ClearNativeSamples()
 {
     CAutoLock lock(&g_nativeSampleLock);
     g_nativeSamples.clear();
+    g_evrMixerReady = false;
+    g_nativeSampleDeadline = -1;
+    g_lastNativeInputTick = 0;
+    g_nativeSkippedSamples = false;
     g_nativeSampleError = S_OK;
     g_nativeSampleChanged.SetEvent();
 }
@@ -259,7 +291,17 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
                 if (FAILED(g_nativeSampleError)) {
                     return g_nativeSampleError;
                 }
-                g_nativeSamples.push_back({pSample, rtStart});
+                const ULONGLONG now = GetTickCount64();
+                if (rtStop < g_nativeSampleDeadline && pSample->IsDiscontinuity() != S_OK
+                        && g_lastNativeInputTick && now - g_lastNativeInputTick < g_nativeRepaintIntervalMs) {
+                    // The decoded picture is already late. Skip its expensive GPU
+                    // conversion, while still forwarding an image each refresh.
+                    g_nativeSkippedSamples = true;
+                    return S_OK;
+                }
+                g_lastNativeInputTick = now;
+                g_nativeSamples.push_back({pSample, rtStart, false, g_nativeSkippedSamples});
+                g_nativeSkippedSamples = false;
                 retained = true;
             }
         }
@@ -375,6 +417,7 @@ void UnhookNewSegment()
 void UnhookReceive()
 {
     g_retainNativeSamples = false;
+    g_evrMixerReady = false;
     g_pNativeInputPin = nullptr;
     ClearNativeSamples();
     // Unhook previous VTables
@@ -440,6 +483,7 @@ bool HookReceive(IMemInputPinC* pMemInputPinC, bool retainNativeSamples)
     if (VirtualProtect(pMemInputPinC->lpVtbl, sizeof(IMemInputPinCVtbl), PAGE_EXECUTE_WRITECOPY, &flOldProtect)) {
         g_tSampleStart = 0;
         g_retainNativeSamples = retainNativeSamples;
+        g_evrMixerReady = false;
         g_pNativeInputPin = pMemInputPinC;
         SetNativeSampleFlushing(false);
         if (ReceiveOrg == nullptr) {

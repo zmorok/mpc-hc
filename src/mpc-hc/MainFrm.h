@@ -228,6 +228,7 @@ private:
         TIMER_HIDER,
         TIMER_WINDOW_FULLSCREEN,
         TIMER_DELAYEDSEEK,
+        TIMER_SEEKRESUME,
         TIMER_VIDEO_ZOOM_ANIMATION,
         TIMER_ONETIME_START,
         TIMER_ONETIME_END = TIMER_ONETIME_START + 127,
@@ -832,7 +833,7 @@ public:
     OAFilterState GetMediaStateDirect();
     OAFilterState GetMediaState();
     OAFilterState UpdateCachedMediaState();
-    bool MediaControlRun(bool waitforcompletion = false);
+    bool MediaControlRun(bool waitforcompletion = false, bool waitForPreroll = true);
     bool MediaControlPause(bool waitforcompletion = false);
     bool MediaControlStop(bool waitforcompletion = false);
     bool MediaControlStopPreview();
@@ -842,9 +843,11 @@ public:
     bool GetKeyFrame(REFERENCE_TIME rtTarget, REFERENCE_TIME rtMin, REFERENCE_TIME rtMax, bool nearest, REFERENCE_TIME& keyframetime) const;
     REFERENCE_TIME GetClosestKeyFrame(REFERENCE_TIME rtTarget, REFERENCE_TIME rtMaxForwardDiff, REFERENCE_TIME rtMaxBackwardDiff) const;
     REFERENCE_TIME GetClosestKeyFramePreview(REFERENCE_TIME rtTarget) const;
-    void SeekTo(REFERENCE_TIME rt, bool bShowOSD = true);
+    void SeekTo(REFERENCE_TIME rt, bool bShowOSD = true, bool allowDelay = true);
     void DoSeekTo(REFERENCE_TIME rt, bool bShowOSD = true);
     SeekToCommand queuedSeek;
+    bool m_bResumeAfterSeek = false;
+    ULONGLONG m_seekResumeStarted = 0;
     ULONGLONG lastSeekStart;
     ULONGLONG lastSeekFinish;
     void SetPlayingRate(double rate);

@@ -83,6 +83,7 @@ CEVRAllocatorPresenter::CEVRAllocatorPresenter(HWND hWnd, bool bFullscreen, HRES
     , m_hEvtQuit(nullptr)
     , m_bEvtQuit(0)
     , m_hEvtFlush(nullptr)
+    , m_hEvtMixerInput(nullptr)
     , m_bEvtFlush(0)
     , m_fUseInternalTimer(false)
     , m_LastSetOutputRange(-1)
@@ -201,6 +202,7 @@ void CEVRAllocatorPresenter::StartWorkerThreads()
     if (m_nRenderState == Shutdown) {
         m_hEvtQuit  = CreateEvent(nullptr, TRUE, FALSE, nullptr);
         m_hEvtFlush = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+        m_hEvtMixerInput = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
         m_hThread = ::CreateThread(nullptr, 0, PresentThread, (LPVOID)this, 0, &dwThreadId);
         SetThreadPriority(m_hThread, THREAD_PRIORITY_TIME_CRITICAL);
@@ -239,6 +241,7 @@ void CEVRAllocatorPresenter::StopWorkerThreads()
         SAFE_CLOSE_HANDLE(m_hVSyncThread);
         SAFE_CLOSE_HANDLE(m_hEvtFlush);
         SAFE_CLOSE_HANDLE(m_hEvtQuit);
+        SAFE_CLOSE_HANDLE(m_hEvtMixerInput);
 
         m_bEvtFlush = false;
         m_bEvtQuit  = false;
@@ -387,6 +390,9 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockStop(MFTIME hnsSystemTime)
 
     TRACE_EVR("EVR: OnClockStop  hnsSystemTime = %I64d\n", hnsSystemTime);
     m_nRenderState = Stopped;
+    if (m_bHookedReceive) {
+        SetNativeSampleDeadline(-1);
+    }
 
     m_ModeratedClockLast = -1;
     m_ModeratedTimeLast  = -1;
@@ -399,8 +405,9 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockPause(MFTIME hnsSystemTime)
     CHECK_HR(CheckShutdown());
 
     TRACE_EVR("EVR: OnClockPause  hnsSystemTime = %I64d\n", hnsSystemTime);
-    if (!m_bSignaledStarvation) {
-        m_nRenderState = Paused;
+    m_nRenderState = Paused;
+    if (m_bHookedReceive) {
+        SetNativeSampleDeadline(-1);
     }
     m_ModeratedTimeLast  = -1;
     m_ModeratedClockLast = -1;
@@ -434,7 +441,8 @@ bool CEVRAllocatorPresenter::GetState(DWORD dwMilliSecsTimeout, FILTER_STATE* St
 
     if (m_bSignaledStarvation) {
         size_t nSamples = std::max(m_nNbDXSurface / 2, 1);
-        if ((m_ScheduledSamples.GetCount() < nSamples || m_LastSampleOffset < -m_rtTimePerFrame * 2) && !g_bNoDuration) {
+        if ((m_ScheduledSamples.GetCount() < nSamples
+                || (m_nRenderState == Started && m_LastSampleOffset < -m_rtTimePerFrame * 2)) && !g_bNoDuration) {
             *State = (FILTER_STATE)Paused;
             _ReturnValue = VFW_S_STATE_INTERMEDIATE;
             return true;
@@ -636,7 +644,7 @@ STDMETHODIMP CEVRAllocatorPresenter::ProcessMessage(MFVP_MESSAGE_TYPE eMessage, 
             break;
 
         case MFVP_MESSAGE_PROCESSINPUTNOTIFY:       // One input stream on the mixer has received a new sample
-            //      GetImageFromMixer();
+            SetEvent(m_hEvtMixerInput);
             break;
 
         case MFVP_MESSAGE_STEP:                     // Requests a frame step.
@@ -1169,7 +1177,7 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
             pSample = nullptr; // The sample should not be used after being queued
             // Important: Release any events returned from the ProcessOutput method.
             SAFE_RELEASE(dataBuffer.pEvents);
-            if (HasNativeSamples()) {
+            if (m_bHookedReceive && HasNativeSamples()) {
                 if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
                     m_bPendingRenegotiate = true;
                 } else if (hr != MF_E_TRANSFORM_NEED_MORE_INPUT && hr != MF_E_TRANSFORM_TYPE_NOT_SET) {
@@ -1192,7 +1200,7 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
 
         nsSampleTime = 0;
         const HRESULT sampleTimeResult = pSample->GetSampleTime(&nsSampleTime);
-        if (HasNativeSamples()) {
+        if (m_bHookedReceive && HasNativeSamples()) {
             // ProcessOutput submits an asynchronous GPU read of the decoder's
             // input. Only completion of that read permits allocator slot reuse.
             CComPtr<IDirect3DQuery9> completion;
@@ -1217,7 +1225,7 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
             // Poll completion on later mixer iterations so decode, processing
             // and presentation can overlap. The media samples stay reserved.
             m_NativeReads.AddTail({completion, nsSampleTime, GetTickCount64()});
-            MarkNativeSamplesProcessed(nsSampleTime);
+            pSample->SetUINT32(MFSampleExtension_Discontinuity, MarkNativeSamplesProcessed(nsSampleTime));
         }
         REFERENCE_TIME nsDuration;
         pSample->GetSampleDuration(&nsDuration);
@@ -1241,6 +1249,9 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
 
         if (SUCCEEDED(TrackSample(pSample))) {
             AddToScheduledList(pSample, false);
+            if (m_bHookedReceive) {
+                MarkEVRMixerReady();
+            }
             pSample = nullptr; // The sample should not be used after being queued
             bDoneSomething = true;
         } else {
@@ -1810,7 +1821,7 @@ bool ExtractInterlaced(const AM_MEDIA_TYPE* pmt)
 
 void CEVRAllocatorPresenter::GetMixerThread()
 {
-    HANDLE   hEvts[] = { m_hEvtQuit};
+    HANDLE   hEvts[] = { m_hEvtQuit, m_hEvtMixerInput};
     bool     bQuit = false;
     TIMECAPS tc;
     DWORD    dwResolution;
@@ -1835,6 +1846,7 @@ void CEVRAllocatorPresenter::GetMixerThread()
             case WAIT_OBJECT_0:
                 bQuit = true;
                 break;
+            case WAIT_OBJECT_0 + 1:
             case WAIT_TIMEOUT: {
                 bool bDoneSomething = false;
                 {
@@ -2198,6 +2210,7 @@ void CEVRAllocatorPresenter::RenderThread()
 {
     HANDLE   hEvts[] = { m_hEvtQuit, m_hEvtFlush};
     bool     bQuit = false, bForcePaint = false;
+    LONGLONG lastPaintCounter = 0;
     TIMECAPS tc;
     MFTIME   nsSampleTime;
     LONGLONG llClockTime;
@@ -2325,6 +2338,7 @@ void CEVRAllocatorPresenter::RenderThread()
                             ++m_OrderedPaint;
                             SubPicSetTime();
                             Paint(pMFSample);
+                            lastPaintCounter = GetRenderersData()->GetPerfCounter();
                             m_nDroppedUpdate = 0;
                             CompleteFrameStep(false);
                             bStepForward = true;
@@ -2344,8 +2358,17 @@ void CEVRAllocatorPresenter::RenderThread()
                                 ++m_OrderedPaint;
                                 SubPicSetTime();
                                 Paint(pMFSample);
+                                lastPaintCounter = GetRenderersData()->GetPerfCounter();
                             } else {
                                 LONGLONG TimePerFrame = (LONGLONG)(GetFrameTime() * 10000000.0);
+                                if (m_bHookedReceive) {
+                                    const UINT refreshRate = std::max<UINT>(m_refreshRate, 1);
+                                    if (!m_bSignaledStarvation && m_rtTimePerFrame > 0 && m_rtTimePerFrame < 10000000LL / refreshRate) {
+                                        SetNativeSampleDeadline(llClockTime - m_rtTimePerFrame, (1000 + refreshRate - 1) / refreshRate);
+                                    } else {
+                                        SetNativeSampleDeadline(-1);
+                                    }
+                                }
                                 LONGLONG SyncOffset = 0;
                                 LONGLONG VSyncTime = 0;
                                 LONGLONG TimeToNextVSync = -1;
@@ -2431,8 +2454,13 @@ void CEVRAllocatorPresenter::RenderThread()
 
                                 LONGLONG VSyncOffset0 = 0;
                                 bool bDoVSyncCorrection = false;
-                                bool bDoDrop = !bForcePaint && (SyncOffset < -(TimePerFrame + TimePerFrameMargin0 - TimePerFrameMargin1)) && nSamplesLeft > 0;
-                                if (bDoDrop) { // Only drop if we have something else to display at once
+                                // Skip late frames even when the producer queues one at a time.
+                                // With an empty queue, repaint at least once per display refresh
+                                // so a producer slower than playback cannot freeze the image.
+                                const bool bDoDrop = !bForcePaint && m_pCurrentlyDisplayedSample
+                                    && (SyncOffset < -(TimePerFrame + TimePerFrameMargin0 - TimePerFrameMargin1))
+                                    && (nSamplesLeft > 0 || CurrentCounter - lastPaintCounter < 10000000LL / std::max<UINT>(m_refreshRate, 1));
+                                if (bDoDrop) {
                                     // Drop frame
                                     TRACE_EVR("EVR: Dropped frame\n");
                                     m_pcFrames++;
@@ -2466,6 +2494,7 @@ void CEVRAllocatorPresenter::RenderThread()
 
                                     SubPicSetTime();
                                     Paint(pMFSample);
+                                    lastPaintCounter = GetRenderersData()->GetPerfCounter();
 
                                     NextSleepTime = 0;
                                     m_pcFramesDrawn++;
@@ -2531,6 +2560,7 @@ void CEVRAllocatorPresenter::RenderThread()
                                 // Ensure that the renderer is properly updated after seeking when paused
                                 SubPicSetTime();
                                 Paint(pMFSample);
+                                lastPaintCounter = GetRenderersData()->GetPerfCounter();
                             }
                             // Sleep no longer than 10ms, so that a state change is picked up promptly.
                             // Still image sources deliver samples with durations of several seconds;
@@ -2860,6 +2890,17 @@ void CEVRAllocatorPresenter::AddToScheduledList(IMFSample* pSample, bool bSorted
 
         m_bCorrectedFrameTime = false;
 
+        UINT32 discontinuity = FALSE;
+        pSample->GetUINT32(MFSampleExtension_Discontinuity, &discontinuity);
+        if (discontinuity) {
+            // Dropping late native input leaves intentional timestamp gaps.
+            // Keep those timestamps instead of inferring a slower frame rate
+            // or correcting the next picture back into the discarded interval.
+            m_DetectedFrameTimePos = 0;
+            m_DetectedLock = false;
+            m_FrameTimeCorrection = 0;
+        }
+
         LONGLONG Diff2 = PrevTime - (LONGLONG)(m_LastScheduledSampleTimeFP * 10000000.0);
         LONGLONG Diff = Time - PrevTime;
         if (PrevTime == -1) {
@@ -2871,7 +2912,7 @@ void CEVRAllocatorPresenter::AddToScheduledList(IMFSample* pSample, bool bSorted
         if (Diff2 < 0) {
             Diff2 = -Diff2;
         }
-        if (Diff < m_rtTimePerFrame * 8 && m_rtTimePerFrame && Diff2 < m_rtTimePerFrame * 8) { // Detect seeking
+        if (!discontinuity && Diff < m_rtTimePerFrame * 8 && m_rtTimePerFrame && Diff2 < m_rtTimePerFrame * 8) { // Detect seeking
             int iPos = (m_DetectedFrameTimePos++) % 60;
             Diff = Time - PrevTime;
             if (PrevTime == -1) {
@@ -3056,13 +3097,21 @@ void CEVRAllocatorPresenter::FlushSamples()
     CAutoLock lock3(&m_RenderLock);
     m_pCurrentlyDisplayedSample = nullptr;
     m_ScheduledSamples.RemoveAll();
-    ClearNativeSamples();
+    if (m_bHookedReceive) {
+        ClearNativeSamples();
+    }
     m_bNativeReadFailed = false;
 
     m_LastSampleOffset = 0;
     m_bLastSampleOffsetValid = false;
     m_bSignaledStarvation = false;
     m_LastScheduledSampleTime = -1;
+    m_LastScheduledUncorrectedSampleTime = -1;
+    m_LastScheduledSampleTimeFP = -1;
+    m_DetectedFrameTimePos = 0;
+    m_DetectedLock = false;
+    m_FrameTimeCorrection = 0;
+    m_bPendingMediaFinished = false;
 }
 
 HRESULT CEVRAllocatorPresenter::TrackSample(IMFSample* pSample)

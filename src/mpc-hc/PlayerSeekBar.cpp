@@ -165,7 +165,7 @@ void CPlayerSeekBar::MoveThumb(const CPoint& point)
 
 void CPlayerSeekBar::SyncVideoToThumb()
 {
-    GetParent()->PostMessage(WM_HSCROLL, (WPARAM)0, reinterpret_cast<LPARAM>(m_hWnd));
+    GetParent()->SendMessage(WM_HSCROLL, (WPARAM)0, reinterpret_cast<LPARAM>(m_hWnd));
 }
 
 void CPlayerSeekBar::CheckScrollDistance(CPoint point, REFERENCE_TIME minimum_duration_change, ULONGLONG minimum_elapsed_tickcount)
@@ -1015,13 +1015,20 @@ void CPlayerSeekBar::OnLButtonDblClk(UINT nFlags, CPoint point)
 void CPlayerSeekBar::OnLButtonUp(UINT nFlags, CPoint point)
 {
     if (DraggingThumb()) {
-        ReleaseCapture();
-        // update video position if seekbar moved at least 250 ms or 1/100th of duration
-        CheckScrollDistance(point, std::min(2500000LL, m_rtStop / 100), 0LL);
-        invalidateThumb();
+        MoveThumb(point);
+        const bool finalPositionChanged = m_rtPosDraw != m_rtHoverPos;
+        const bool resume = pausedForScrolling;
+        // ReleaseCapture sends OnCaptureChanged synchronously. Finish the final
+        // seek ourselves before that handler can resume the old position.
+        m_bDraggingThumb = false;
         pauseAfterFirstScroll = false;
-        if (pausedForScrolling) {
-            pausedForScrolling = false;
+        pausedForScrolling = false;
+        ReleaseCapture();
+        if (finalPositionChanged || m_pMainFrame->queuedSeek.seekTime > 0) {
+            m_pMainFrame->SeekTo(m_rtPos, true, false);
+        }
+        invalidateThumb();
+        if (resume) {
             m_pMainFrame->MediaControlRun();
         }
     }
