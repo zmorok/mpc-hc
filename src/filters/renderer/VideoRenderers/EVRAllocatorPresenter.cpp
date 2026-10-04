@@ -614,6 +614,10 @@ STDMETHODIMP CEVRAllocatorPresenter::ProcessMessage(MFVP_MESSAGE_TYPE eMessage, 
         case MFVP_MESSAGE_ENDOFSTREAM:              // All input streams have ended.
             TRACE_EVR("EVR: MFVP_MESSAGE_ENDOFSTREAM\n");
             m_bPendingMediaFinished = true;
+            if (m_bHookedReceive) {
+                // Seeking to EOF may have no new frame to complete preroll.
+                MarkEVRMixerReady();
+            }
             break;
 
         case MFVP_MESSAGE_ENDSTREAMING:             // The EVR switched from running or paused to stopped. The presenter should free resources
@@ -2230,7 +2234,7 @@ void CEVRAllocatorPresenter::RenderThread()
     VERIFY(timeBeginPeriod(dwResolution) == 0);
 
     auto checkPendingMediaFinished = [this]() {
-        if (m_bPendingMediaFinished && m_nRenderState != Stopped) {
+        if (m_bPendingMediaFinished && (m_nRenderState == Started || m_nStepCount > 0)) {
             CAutoLock lock(&m_SampleQueueLock);
             if (m_ScheduledSamples.IsEmpty()) {
                 m_bPendingMediaFinished = false;

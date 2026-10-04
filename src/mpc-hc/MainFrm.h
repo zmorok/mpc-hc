@@ -848,6 +848,7 @@ public:
     SeekToCommand queuedSeek;
     bool m_bResumeAfterSeek = false;
     ULONGLONG m_seekResumeStarted = 0;
+    ULONGLONG m_playbackStateSerial = 0;
     ULONGLONG lastSeekStart;
     ULONGLONG lastSeekFinish;
     void SetPlayingRate(double rate);

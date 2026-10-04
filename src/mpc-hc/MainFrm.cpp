@@ -2970,8 +2970,13 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
             break;
         case TIMER_SEEKRESUME:
             if (m_bResumeAfterSeek && m_pMC && GetLoadState() == MLS::LOADED) {
+                const ULONGLONG serial = m_playbackStateSerial;
                 OAFilterState state;
                 const HRESULT hr = m_pMC->GetState(0, &state);
+                // GetState can dispatch a newer pause, stop or seek through quartz.
+                if (!m_bResumeAfterSeek || serial != m_playbackStateSerial) {
+                    break;
+                }
                 if (FAILED(hr)) {
                     MediaControlPause();
                 } else if (queuedSeek.seekTime == 0 && ((hr == S_OK && IsEVRMixerReady())
@@ -3331,12 +3336,6 @@ void CMainFrame::GraphEventComplete()
 {
     CAppSettings& s = AfxGetAppSettings();
 
-    auto* pMRU = &s.MRU;
-
-    if (m_bRememberFilePos) {
-        pMRU->UpdateCurrentFilePosition(0, true);
-    }
-
     if (m_fFrameSteppingActive) {
         m_fFrameSteppingActive = false;
         m_nStepForwardCount = 0;
@@ -3346,6 +3345,16 @@ void CMainFrame::GraphEventComplete()
         }
         m_fEndOfStream = true;
         return;
+    }
+
+    if (GetPlaybackMode() == PM_FILE && GetMediaState() != State_Running) {
+        // A paused seek to EOF must not start the repeat/playlist actions.
+        m_fEndOfStream = true;
+        return;
+    }
+
+    if (m_bRememberFilePos) {
+        s.MRU.UpdateCurrentFilePosition(0, true);
     }
 
     bool bBreak = false;
@@ -13001,6 +13010,10 @@ OAFilterState CMainFrame::GetMediaState()
 {
     OAFilterState ret = -1;
     if (m_eMediaLoadState == MLS::LOADED) {
+        // The graph is temporarily paused for preroll, but playback is requested.
+        if (m_bResumeAfterSeek) {
+            return State_Running;
+        }
         if (m_CachedFilterState != -1) {
             #if DEBUG & 0
             ret = GetMediaStateDirect();
@@ -13019,6 +13032,9 @@ OAFilterState CMainFrame::UpdateCachedMediaState()
     if (m_eMediaLoadState == MLS::LOADED) {
         m_CachedFilterState = -1;
         m_pMC->GetState(0, &m_CachedFilterState);
+        if (m_bResumeAfterSeek) {
+            m_CachedFilterState = State_Running;
+        }
     } else {
         m_CachedFilterState = -1;
     }
@@ -13030,15 +13046,22 @@ bool CMainFrame::MediaControlRun(bool waitforcompletion, bool waitForPreroll)
     // quartz.dll can pump messages (PeekMessage) inside IMediaControl calls, so a close or
     // open dispatched there is deferred like one from OnTimer
     CDeferredActionScope actionScope(*this);
+    const ULONGLONG serial = ++m_playbackStateSerial;
     if (waitForPreroll && m_pMC && GetLoadState() == MLS::LOADED
-            && GetMediaState() == State_Paused && !m_fAudioOnly
-            && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM && !IsEVRMixerReady()) {
+            && !m_fAudioOnly && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM
+            && !IsEVRMixerReady() && GetMediaStateDirect() == State_Paused) {
+        if (serial != m_playbackStateSerial) {
+            return false;
+        }
         if (!m_bResumeAfterSeek) {
             m_bResumeAfterSeek = true;
             m_seekResumeStarted = GetTickCount64();
         }
         m_CachedFilterState = State_Running;
         SetTimer(TIMER_SEEKRESUME, 10, nullptr);
+    }
+    if (serial != m_playbackStateSerial) {
+        return false;
     }
     if (m_bResumeAfterSeek) {
         return true;
@@ -13063,6 +13086,7 @@ bool CMainFrame::MediaControlRun(bool waitforcompletion, bool waitForPreroll)
 bool CMainFrame::MediaControlPause(bool waitforcompletion)
 {
     CDeferredActionScope actionScope(*this);
+    ++m_playbackStateSerial;
     m_bResumeAfterSeek = false;
     KillTimer(TIMER_SEEKRESUME);
     m_dwLastPause = GetTickCount64();
@@ -13085,6 +13109,7 @@ bool CMainFrame::MediaControlPause(bool waitforcompletion)
 bool CMainFrame::MediaControlStop(bool waitforcompletion)
 {
     CDeferredActionScope actionScope(*this);
+    ++m_playbackStateSerial;
     m_bResumeAfterSeek = false;
     KillTimer(TIMER_SEEKRESUME);
     m_dwLastPause = 0ULL;
@@ -20465,6 +20490,7 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/, bool all
 void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
 {
     CDeferredActionScope actionScope(*this);
+    const ULONGLONG serial = ++m_playbackStateSerial;
     //TRACE(_T("DoSeekTo: %lu\n"), rtPos);
 
     if (m_pMS.p == nullptr) {
@@ -20525,12 +20551,21 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
 
     if (GetPlaybackMode() == PM_FILE) {
         if (fs == State_Running && !m_fAudioOnly
-                && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM
-                && SUCCEEDED(m_pMC->Pause())) {
+                && AfxGetAppSettings().iDSVideoRendererType == VIDRNDT_DS_EVR_CUSTOM) {
             // Keep the user's running intent, but let decode preroll complete
             // before restarting the graph clock. Poll without blocking the UI.
             m_bResumeAfterSeek = true;
             m_seekResumeStarted = GetTickCount64();
+            const HRESULT hr = m_pMC->Pause();
+            if (serial != m_playbackStateSerial) {
+                return;
+            }
+            if (FAILED(hr)) {
+                m_bResumeAfterSeek = false;
+            }
+        }
+        if (serial != m_playbackStateSerial) {
+            return;
         }
         //SleepEx(5000, False); // artificial slow seek for testing purposes
         if (FAILED(m_pMS->SetPositions(&rtPos, AM_SEEKING_AbsolutePositioning, nullptr, AM_SEEKING_NoPositioning))) {
@@ -20538,6 +20573,9 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
             if (abRepeat.positionA && rtPos == abRepeat.positionA) {
                 DisableABRepeat();
             }
+        }
+        if (serial != m_playbackStateSerial) {
+            return;
         }
         UpdateChapterInInfoBar();
         if (m_bResumeAfterSeek) {
@@ -20570,7 +20608,9 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
     } else {
         ASSERT(FALSE);
     }
-    m_fEndOfStream = false;
+    REFERENCE_TIME duration = 0;
+    m_fEndOfStream = GetPlaybackMode() == PM_FILE && fs != State_Running && m_pMS
+        && SUCCEEDED(m_pMS->GetDuration(&duration)) && duration > 0 && rtPos >= duration;
 
     OnTimer(TIMER_STREAMPOSPOLLER);
     OnTimer(TIMER_STREAMPOSPOLLER2);
