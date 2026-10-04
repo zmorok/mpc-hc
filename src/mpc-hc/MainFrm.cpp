@@ -2595,6 +2595,9 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
                 m_wndSeekBar.SetRange(0, rtDur);
                 m_wndSeekBar.SetPos(rtNow);
                 m_wndSeekBar.UpdateTime();
+                // Play/Pause auto-repeat can keep WM_PAINT behind command messages.
+                // Paint the invalidated seekbar now so the thumb follows playback.
+                m_wndSeekBar.UpdateWindow();
                 m_OSD.SetRange(rtDur);
                 m_OSD.SetPos(rtNow);
                 m_Lcd.SetMediaRange(0, rtDur);
