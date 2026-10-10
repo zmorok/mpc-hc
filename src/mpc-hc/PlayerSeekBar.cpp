@@ -457,6 +457,7 @@ void CPlayerSeekBar::EnsureTimeFont() const
         lf.lfHeight = -mag; // negative => character height
         VERIFY(m_timeFont.CreateFontIndirect(&lf));
         m_timeFontHeight = mag;
+        m_timeTextNeedsMeasure = true;
     }
 
     // Recompute the reserved section width when the font or the set of enabled time options changes.
@@ -489,10 +490,15 @@ void CPlayerSeekBar::UpdateTime()
         // Safety net: if the actual string is wider than the model (e.g. the frame-count format, a
         // "Live" label, or the position overrunning a short/inaccurate duration), widen so it never
         // clips. The model stays the stable floor, so the common case doesn't jitter.
-        CClientDC dc(this);
-        CFont* pOldFont = dc.SelectObject(&m_timeFont);
-        newActualWidth = dc.GetTextExtent(newText).cx + m_pMainFrame->m_dpi.ScaleX(TIME_SECTION_PADDING);
-        dc.SelectObject(pOldFont);
+        if (textChanged || m_timeTextNeedsMeasure) {
+            CClientDC dc(this);
+            CFont* pOldFont = dc.SelectObject(&m_timeFont);
+            newActualWidth = dc.GetTextExtent(newText).cx + m_pMainFrame->m_dpi.ScaleX(TIME_SECTION_PADDING);
+            dc.SelectObject(pOldFont);
+            m_timeTextNeedsMeasure = false;
+        } else {
+            newActualWidth = m_timeActualWidth;
+        }
     }
 
     m_timeText = newText;

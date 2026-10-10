@@ -78,6 +78,7 @@ private:
     mutable int   m_timeFontHeight = 0; // char height the cached font was built for (px)
     mutable int   m_timeReservedWidth = 0; // modeled (worst-case-for-options) time-section width, the stable floor (px)
     mutable int   m_timeActualWidth = 0;   // width of the actual current time string; widens the section if it ever exceeds the model (px)
+    mutable bool m_timeTextNeedsMeasure = true; // invalidated when the font is rebuilt
     mutable CString m_timeTemplate;     // widest string the reserved width was measured for (tracks the active options)
 
     bool ShowTimeOnSeekBar() const;

@@ -25971,15 +25971,13 @@ void CMainFrame::MediaTransportControlUpdateState(OAFilterState state) {
 }
 
 void CMainFrame::MediaTransportControlUpdateTimeline(bool force /*= false*/) {
-    if (!m_media_trans_control.IsActive() || !m_media_trans_control.smtc_controls2) {
-        return;
-    }
-    // Note: IsActive() is a COM call, so when throttling check the tick count first
-    ULONGLONG tick = GetTickCount64();
+    // IsActive() calls COM: apply throttling before probing the controls.
+    const ULONGLONG tick = GetTickCount64();
     if (!force && tick < m_lastSMTCTimelineUpdate + 2000ULL) {
         return;
     }
-    if (GetLoadState() != MLS::LOADED || IsPlaybackCaptureMode() || !m_media_trans_control.IsActive()) {
+    if (!m_media_trans_control.smtc_controls2 || GetLoadState() != MLS::LOADED
+            || IsPlaybackCaptureMode() || !m_media_trans_control.IsActive()) {
         return;
     }
     m_lastSMTCTimelineUpdate = tick;

@@ -74,3 +74,39 @@ In the diagnostic run, hidden-panel setup fell from about 5–6 ms to 0.001–0.
 ms. This is a small component of the roughly 400 ms open, not a promise of a
 large overall speedup. Eight alternating AV1/H.264 opens and statistics toggling
 completed successfully. Decoder and renderer creation are unchanged.
+
+## Steady playback
+
+The seekbar reuses the measured width when its timer text and font are
+unchanged. Rebuilding the font invalidates that cache, including theme/DPI and
+height changes; changed timer text is always remeasured. With a whole-second
+display and 100 ms polling this removes most repeated text measurements, while
+high-precision timers continue updating at their requested cadence.
+
+The SMTC timeline path checks its two-second throttle before calling COM and
+queries `IsActive()` once per actual update. Forced updates on seek and state
+changes still bypass throttling. No decoder, renderer, GPU synchronization or
+lock-order changes are part of these optimizations.
+
+### Final validation and comparison
+
+Release x64 passed long AV1 and native DXVA2 seeks, pause/resume and EOF repeat,
+90 rapid paused seeks, 30 alternating play/pause commands, closing immediately
+after a running seek, and eight alternating files with statistics enabled.
+
+A first sequential comparison coincided with compiler processes and showed
+large timing/CPU variation, so it is not evidence of a large speedup. An AV1
+ABBA repeat (before, after, after, before), with three opens/twelve seeks per
+run and seekbar time enabled in both portable copies, gave pooled medians:
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Open to API loaded notification | 417.2 ms | 413.6 ms |
+| Relative seek command | 26.3 ms | 25.8 ms |
+| Seek to graph-clock advancement | 130.2 ms | 126.6 ms |
+
+The overall differences are small; seek differences overlap run-to-run noise.
+Five-second CPU samples varied substantially (playing: 14.1–14.7% of one core
+before, 10.3–17.2% after; paused: 0.6–1.6% before, 0.9–1.3% after). They do not
+establish an aggregate CPU reduction or regression. The improvements remove
+specific redundant UI operations; no first-frame or FPS improvement is claimed.
