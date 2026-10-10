@@ -158,3 +158,33 @@ private:
 #define USE_GRAPH_LOGGER(s) (s.DebugLogMask & (int)LogTargets::GRAPH)
 
 #define FLUSH_LOGGER() _flushall()
+
+// Optional coarse operation timings. Keep this on the control/graph threads:
+// logging must never become an extra dependency of the renderer's locks.
+class PlayerTimingScope final {
+public:
+    explicit PlayerTimingScope(LPCTSTR operation)
+        : m_operation(operation)
+        , m_enabled(USE_LOGGER(AfxGetAppSettings()) != 0) {
+        if (m_enabled) {
+            QueryPerformanceCounter(&m_start);
+        }
+    }
+    ~PlayerTimingScope() {
+        if (m_enabled) {
+            LARGE_INTEGER end, frequency;
+            QueryPerformanceCounter(&end);
+            QueryPerformanceFrequency(&frequency);
+            PLAYER_LOG(_T("PERF %s %.3f ms (thread %lu)"), m_operation,
+                1000.0 * (end.QuadPart - m_start.QuadPart) / frequency.QuadPart,
+                GetCurrentThreadId());
+        }
+    }
+    PlayerTimingScope(const PlayerTimingScope&) = delete;
+    PlayerTimingScope& operator=(const PlayerTimingScope&) = delete;
+
+private:
+    LPCTSTR m_operation;
+    bool m_enabled;
+    LARGE_INTEGER m_start = {};
+};

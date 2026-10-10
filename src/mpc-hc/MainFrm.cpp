@@ -15497,6 +15497,7 @@ bool CMainFrame::TrySkipWithinRar(bool forward) {
 // Called from GraphThread
 void CMainFrame::OpenFile(OpenFileData* pOFD)
 {
+    PlayerTimingScope timing(_T("OpenFile"));
     if (pOFD->fns.IsEmpty()) {
         throw (UINT)IDS_MAINFRM_81;
     }
@@ -16791,6 +16792,7 @@ bool CMainFrame::UpdateChapterInInfoBar(bool bRecalcLayout /*= true*/)
 
 void CMainFrame::OpenSetupStatsBar()
 {
+    PlayerTimingScope timing(_T("OpenSetupStatsBar"));
     m_wndStatsBar.RemoveAllLines();
 
     if (GetLoadState() == MLS::LOADED) {
@@ -17467,6 +17469,7 @@ int CMainFrame::SetupSubtitleStreams()
 
 bool CMainFrame::OpenMediaPrivate(CAutoPtr<OpenMediaData> pOMD)
 {
+    PlayerTimingScope timing(_T("OpenMediaPrivate"));
     ASSERT(GetLoadState() == MLS::LOADING);
     auto& s = AfxGetAppSettings();
 
@@ -17882,6 +17885,7 @@ bool CMainFrame::OpenMediaPrivate(CAutoPtr<OpenMediaData> pOMD)
 
 void CMainFrame::CloseMediaPrivate()
 {
+    PlayerTimingScope timing(_T("CloseMediaPrivate"));
     ASSERT(GetLoadState() == MLS::CLOSING);
 
     CAppSettings& s = AfxGetAppSettings();
@@ -20621,6 +20625,7 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/, bool all
 
 void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
 {
+    PlayerTimingScope timing(_T("DoSeekTo"));
     CDeferredActionScope actionScope(*this);
     const ULONGLONG serial = ++m_playbackStateSerial;
     //TRACE(_T("DoSeekTo: %lu\n"), rtPos);
@@ -21423,6 +21428,7 @@ void CMainFrame::OpenMedia(CAutoPtr<OpenMediaData> pOMD)
 
 void CMainFrame::OpenMediaInternal(CAutoPtr<OpenMediaData> pOMD)
 {
+    PlayerTimingScope timing(_T("OpenMediaInternal"));
     // Next media load: stop force-showing the status bar that an earlier error revealed. A
     // host-supplied status message keeps its own three-second reveal across this transition.
     if (!m_bKeepTempStatusBarVisibleOnMediaLoad) {
