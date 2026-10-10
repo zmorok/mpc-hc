@@ -2990,12 +2990,14 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
         case TIMER_HIDER:
             m_timerHider.NotifySubscribers();
             break;
-        case TIMER_DELAYEDSEEK:
-            KillTimer(TIMER_DELAYEDSEEK);
-            if (queuedSeek.seekTime > 0) {
-                SeekTo(queuedSeek.rtPos, queuedSeek.bShowOSD);
+        case TIMER_DELAYEDSEEK: {
+            const auto seek = queuedSeek;
+            KillTimerDelayedSeek();
+            if (seek.seekTime > 0) {
+                SeekTo(seek.rtPos, seek.bShowOSD);
             }
             break;
+        }
         case TIMER_VIDEO_ZOOM_ANIMATION:
             OnInteractiveVideoZoomTimer();
             break;
@@ -20613,8 +20615,13 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/, bool all
 
     if (allowDelay && ticksSinceLastSeek < mindelay) {
         //TRACE(_T("Delay seek: %lu %lu\n"), rtPos, ticksSinceLastSeek);
+        const bool timerPending = queuedSeek.seekTime != 0;
         queuedSeek = { rtPos, curTime, bShowOSD };
-        SetTimer(TIMER_DELAYEDSEEK, (UINT)(mindelay - ticksSinceLastSeek), nullptr);
+        // New targets replace the pending target without postponing its timer.
+        // Re-arming on every mouse move can starve seeks until dragging stops.
+        if (!timerPending) {
+            SetTimer(TIMER_DELAYEDSEEK, (UINT)(mindelay - ticksSinceLastSeek), nullptr);
+        }
     } else {
         KillTimerDelayedSeek();
         lastSeekStart = curTime;
@@ -20750,7 +20757,9 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
         && SUCCEEDED(m_pMS->GetDuration(&duration)) && duration > 0 && rtPos >= duration;
 
     OnTimer(TIMER_STREAMPOSPOLLER);
-    OnTimer(TIMER_STREAMPOSPOLLER2);
+    if (AfxGetAppSettings().fShowCurrentTimeInOSD && m_OSD.CanShowMessage()) {
+        m_OSD.DisplayTime(m_wndStatusBar.GetStatusTimer());
+    }
 
     if (fs == State_Running || fs == State_Paused) {
         // Update media transport controls timeline after seek

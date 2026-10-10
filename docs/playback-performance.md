@@ -52,3 +52,15 @@ opens and twelve seeks per file, warm local files:
 
 Compilation overlapped part of this initial run, so its CPU readings must not
 be used to claim a CPU reduction. Repeat CPU comparisons without a build running.
+
+## Seek scheduling
+
+Pending seeks now replace their target without re-arming the existing timer.
+The timer callback clears the old request before servicing it, allowing an
+early timer delivery to schedule a new wait normally. The existing 16/40/100 ms
+limits and nonblocking EVR preroll checks are unchanged. Seeking also avoids an
+extra throttled SMTC timeline call immediately before the forced update.
+
+Release x64 validation: long AV1 and native H.264 forward/backward seeks,
+three paused seeks and three EOF repeats per decoder passed. A burst of ninety
+paused seeks retained the final 1.7 s target and resumed playback successfully.
