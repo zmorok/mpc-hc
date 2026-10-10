@@ -319,6 +319,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_WM_UNINITMENUPOPUP()
 
     ON_WM_ENTERMENULOOP()
+    ON_WM_EXITMENULOOP()
 
     ON_WM_QUERYENDSESSION()
     ON_WM_ENDSESSION()
@@ -943,8 +944,6 @@ CMainFrame::CMainFrame()
     , m_bExtOnTop(false)
     , m_bIsBDPlay(false)
     , m_bHasBDMeta(false)
-    , watchingDialog(themableDialogTypes::None)
-    , dialogHookHelper(nullptr)
     , delayingFullScreen(false)
     , restoringWindowRect(false)
     , mediaTypesErrorDlg(nullptr)
@@ -1327,6 +1326,25 @@ CMainFrame::CDeferredActionScope::~CDeferredActionScope()
     }
 }
 
+// A tracked popup and the menu bar are holders too, for a different reason: the
+// stream, filter and recent submenus they show are rebuilt by a media change, and
+// emptying one frees the per item data Windows hands back to DrawItem while the
+// popup window is still on screen. DeferIfNested ends the menu loop whenever it
+// records a request against this depth, so the rebuild runs with nothing up.
+CMainFrame::CTrackedMenuScope::CTrackedMenuScope(CMainFrame& frame)
+    : m_frame(frame)
+    , m_defer(frame)
+{
+    ++m_frame.m_nTrackedMenuDepth;
+}
+
+CMainFrame::CTrackedMenuScope::~CTrackedMenuScope()
+{
+    // members are destroyed after this body, so the depth is back down before
+    // m_defer's own destructor posts WM_MPC_RUN_DEFERRED
+    --m_frame.m_nTrackedMenuDepth;
+}
+
 LRESULT CMainFrame::OnRunDeferredActions(WPARAM wParam, LPARAM lParam)
 {
     if (m_nDeferredActionDepth > 0) {
@@ -1389,6 +1407,12 @@ bool CMainFrame::DeferIfNested(DeferredActionType type, std::function<void()> ac
         return false;
     }
     m_deferredActions.push_back({ type, std::move(action) });
+    if (m_nTrackedMenuDepth > 0) {
+        // the menu is showing the old file's streams and filters, so it is stale the
+        // moment the next one opens. Ending the loop here lets the recorded request
+        // run from the top level pump instead of under a popup Windows is drawing
+        ::EndMenu();
+    }
     return true;
 }
 
@@ -1402,6 +1426,10 @@ void CMainFrame::OnClose()
         // SC_CLOSE, so an open dispatched in between is dropped
         m_bDeferredOnClose = true;
         m_OnClose_queued = true;
+        if (m_nTrackedMenuDepth > 0) {
+            // otherwise the exit waits for the user to close the menu
+            ::EndMenu();
+        }
         return;
     }
 
@@ -4268,7 +4296,25 @@ void CMainFrame::OnEnterMenuLoop(BOOL bIsTrackPopupMenu)
         ASSERT(!m_pActiveContextMenu);
         VERIFY(SetMenuBarState(AFX_MBS_VISIBLE));
     }
+    if (!bIsTrackPopupMenu && !m_menuBarMenuScope) {
+        // the menu bar reaches the submenus a media change rebuilds, and its loop
+        // spans two handlers, so the scope is held in a member until OnExitMenuLoop.
+        // Only emplaced when empty: a second enter without an exit in between must
+        // not drop the depth while the loop is still up, which is what replacing a
+        // held scope would do, and the one exit still balances this.
+        // Not done for a tracked popup: the playlist and subresync bars track their
+        // own menus with the frame as owner, and those must not defer the transition
+        m_menuBarMenuScope.emplace(*this);
+    }
     __super::OnEnterMenuLoop(bIsTrackPopupMenu);
+}
+
+void CMainFrame::OnExitMenuLoop(BOOL bIsTrackPopupMenu)
+{
+    if (!bIsTrackPopupMenu && m_menuBarMenuScope.has_value()) {
+        m_menuBarMenuScope.reset();
+    }
+    __super::OnExitMenuLoop(bIsTrackPopupMenu);
 }
 
 BOOL CMainFrame::OnQueryEndSession()
@@ -4304,7 +4350,11 @@ BOOL CMainFrame::OnMenu(CMenu* pMenu)
 
     m_pActiveContextMenu = pMenu;
 
-    pMenu->TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NOANIMATION, point.x, point.y, this);
+    {
+        // the popup carries the submenus a media change rebuilds
+        CTrackedMenuScope trackedMenuScope(*this);
+        pMenu->TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NOANIMATION, point.x, point.y, this);
+    }
 
     return TRUE;
 }
@@ -5067,7 +5117,11 @@ void CMainFrame::ToolbarContextMenu(int iItem, int nIndex, CRect buttonRect) {
         m_bTBDropdownActive = true;
         TPMPARAMS overlap = { sizeof(TPMPARAMS) };
         overlap.rcExclude = buttonRect;
-        subMenu->TrackPopupMenuEx(TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_VERTICAL | TPM_BOTTOMALIGN, buttonRect.left, buttonRect.top, this, &overlap);
+        {
+            // the dropdown is one of the submenus a media change rebuilds
+            CTrackedMenuScope trackedMenuScope(*this);
+            subMenu->TrackPopupMenuEx(TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_VERTICAL | TPM_BOTTOMALIGN, buttonRect.left, buttonRect.top, this, &overlap);
+        }
 
         m_bTBDropdownActive = false;
     }
@@ -6055,8 +6109,28 @@ void CMainFrame::OnFileReopen()
     PostMessage(WM_MPC_OPENCURPLAYLIST, 1, 0);
 }
 
+// While a modal dialog is open the main frame is disabled, and WindowFromPoint
+// does not descend into a disabled window, so ole32 hands a drop anywhere over
+// the player to our drop target instead of the playlist bar's. Recognize a drop
+// that lands over the playlist so it can be given to the playlist (#4265).
+bool CMainFrame::IsPlaylistDropWhileDisabled(CPoint ptClient) const
+{
+    if (IsWindowEnabled() || !m_wndPlaylistBar.IsWindowVisible()) {
+        return false;
+    }
+    ClientToScreen(&ptClient);
+    CRect r;
+    m_wndPlaylistBar.GetWindowRect(&r);
+    return !!r.PtInRect(ptClient);
+}
+
 DROPEFFECT CMainFrame::OnDropAccept(COleDataObject* pDataObject, DWORD dwKeyState, CPoint point)
 {
+    m_lastDropPoint = point;
+    if (IsPlaylistDropWhileDisabled(point)) {
+        return DROPEFFECT_COPY;
+    }
+
     ClientToScreen(&point);
     if (CMouse::CursorOnRootWindow(point, *this)) {
         UpdateControlState(UPDATE_CONTROLS_VISIBILITY);
@@ -6146,6 +6220,11 @@ void CMainFrame::OnDropFiles(CAtlList<CStringW>& slFiles, DROPEFFECT dropEffect)
         if (DeferIfNested(type, [this, pFiles, dropEffect] { OnDropFiles(*pFiles, dropEffect); })) {
             return;
         }
+    }
+
+    if (IsPlaylistDropWhileDisabled(m_lastDropPoint)) {
+        m_wndPlaylistBar.OnDropFiles(slFiles, dropEffect);
+        return;
     }
 
     SetForegroundWindow();
@@ -11140,9 +11219,14 @@ bool CMainFrame::IsValidSubtitleStream(int i) {
     return false;
 }
 
-// Called from GraphThread
+// Can be called from GraphThread
 void CMainFrame::OnPlayAudio(UINT nID)
 {
+    if (!IsStateLoadedOrLoading()) {
+        ASSERT(false);
+        return;
+    }
+
     int i = (int)nID - ID_AUDIO_SUBITEM_START;
 
     DWORD cStreams = 0;
@@ -12398,6 +12482,12 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
 
         CString desc = GetFileName();
 
+        // capture the rest of the entry here as well, the file can change while the modal pump runs
+        CPlaylistItem pli;
+        bool bHasCur = !is_BD && m_wndPlaylistBar.GetCur(pli);
+        REFERENCE_TIME rtPos = GetPos();
+        ABRepeat ab = abRepeat;
+
         // Name
         CString name;
         if (fShowDialog) {
@@ -12415,11 +12505,11 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
         // RememberPos
         CString posStr = _T("0");
         if (s.bFavRememberPos) {
-            posStr.Format(_T("%I64d"), GetPos());
+            posStr.Format(_T("%I64d"), rtPos);
         }
         // RememberABMarks
-        if (s.bFavRememberABMarks && abRepeat) {
-            posStr.AppendFormat(_T(":%I64d:%I64d"), abRepeat.positionA, abRepeat.positionB);
+        if (s.bFavRememberABMarks && ab) {
+            posStr.AppendFormat(_T(":%I64d:%I64d"), ab.positionA, ab.positionB);
         }
         args.AddTail(posStr);
 
@@ -12433,8 +12523,7 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
         if (is_BD) {
             args.AddTail(fn);
         } else {
-            CPlaylistItem pli;
-            if (m_wndPlaylistBar.GetCur(pli)) {
+            if (bHasCur) {
                 if (pli.m_bYoutubeDL) {
                     args.AddTail(pli.m_ydlSourceURL);
                 } else {
@@ -12464,6 +12553,22 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
             } else {
                 desc = fn;
             }
+
+            // capture the state here as well, the disc position can change while the modal pump runs
+            CString state;
+            {
+                CDVDStateStream stream;
+                stream.AddRef();
+
+                CComPtr<IDvdState> pStateData;
+                CComQIPtr<IPersistStream> pPersistStream;
+                if (SUCCEEDED(m_pDVDI->GetState(&pStateData))
+                        && (pPersistStream = pStateData)
+                        && SUCCEEDED(OleSaveToStream(pPersistStream, (IStream*)&stream))) {
+                    state = BinToCString(stream.m_data.GetData(), stream.m_data.GetCount());
+                }
+            }
+
             // Name
             CString name;
             if (fShowDialog) {
@@ -12479,17 +12584,8 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
 
             // RememberPos
             CString pos(_T("0"));
-            if (s.bFavRememberPos) {
-                CDVDStateStream stream;
-                stream.AddRef();
-
-                CComPtr<IDvdState> pStateData;
-                CComQIPtr<IPersistStream> pPersistStream;
-                if (SUCCEEDED(m_pDVDI->GetState(&pStateData))
-                        && (pPersistStream = pStateData)
-                        && SUCCEEDED(OleSaveToStream(pPersistStream, (IStream*)&stream))) {
-                    pos = BinToCString(stream.m_data.GetData(), stream.m_data.GetCount());
-                }
+            if (s.bFavRememberPos && !state.IsEmpty()) {
+                pos = state;
             }
 
             args.AddTail(pos);
@@ -12580,6 +12676,8 @@ void CMainFrame::PlayFavoriteFile(const CString& fav)
     CAtlList<CString> args;
     REFERENCE_TIME rtStart = 0;
     FileFavorite ff = ParseFavoriteFile(fav, args, &rtStart);
+    // closing the current file clears abRepeat, so keep the favorite's marks for the open
+    ABRepeat favABRepeat = abRepeat;
 
     auto firstFile = args.GetHead();
     if (!m_wndPlaylistBar.SelectFileInPlaylist(firstFile)) {
@@ -12604,7 +12702,7 @@ void CMainFrame::PlayFavoriteFile(const CString& fav)
         if (!CloseMediaBeforeOpen()) {
             return;
         }
-        OpenCurPlaylistItem(rtStart, abRepeat);
+        OpenCurPlaylistItem(rtStart, false, favABRepeat);
     }
 
 }
@@ -14217,6 +14315,11 @@ void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVi
             m_pDedicatedFSVideoWnd->SetVideoRect(&windowRect);
         } else {
             m_wndView.SetVideoRect(&windowRect);
+        }
+
+        // the bitmap OSD is sized to the renderer's window, which can change without a WM_SIZE of the view
+        if (m_OSD.GetOSDType() == OSD_TYPE_BITMAP) {
+            m_OSD.OnSize(SIZE_RESTORED, windowRect.Width(), windowRect.Height());
         }
     } else {
         m_wndView.SetVideoRect();
@@ -20886,8 +20989,11 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
         m_pMVRS.Release();
         m_pMVRFG.Release();
         m_pMVRSR.Release();
+        m_pMVRC.Release();
+        m_pMVRI.Release();
         m_pMVTO.Release();
         m_pMPCVRSR.Release();
+        m_pD3DFSC.Release();
         m_pCAP3.Release();
         m_pCAP2.Release();
         m_pCAP.Release();
@@ -20940,87 +21046,87 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
     CComPtr<IPin> pVidCapPin, pVidPrevPin, pAudCapPin, pAudPrevPin;
     BuildToCapturePreviewPin(m_pVidCap, &pVidCapPin, &pVidPrevPin, m_pAudCap, &pAudCapPin, &pAudPrevPin);
 
-    //if (m_pVidCap)
-    {
-        bool fVidPrev = pVidPrevPin && fVPreview;
-        bool fVidCap = pVidCapPin && fVCapture && fFileOutput && m_wndCaptureBar.m_capdlg.m_fVidOutput;
+    bool fVidPrev = pVidPrevPin && fVPreview;
+    bool fVidCap = pVidCapPin && fVCapture && fFileOutput && m_wndCaptureBar.m_capdlg.m_fVidOutput;
 
-        if (fVPreview == 2 && !fVidCap && pVidCapPin) {
-            pVidPrevPin = pVidCapPin;
-            pVidCapPin = nullptr;
+    if (fVPreview == 2 && !fVidCap && pVidCapPin) {
+        pVidPrevPin = pVidCapPin;
+        pVidCapPin = nullptr;
+    }
+
+    bool fAudPrev = pAudPrevPin && fAPreview;
+    bool fAudCap = pAudCapPin && fACapture && fFileOutput && m_wndCaptureBar.m_capdlg.m_fAudOutput;
+
+    if (fAPreview == 2 && !fAudCap && pAudCapPin) {
+        pAudPrevPin = pAudCapPin;
+        pAudCapPin = nullptr;
+    }
+
+    // Render both previews before BuildCapture adds the mux to the graph.
+    // CFGManager::Connect prefers filters already in the graph and would
+    // otherwise connect a preview pin to a spare input of the mux.
+    if (fVidPrev) {
+        m_pGB->Render(pVidPrevPin);
+
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP2), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP3), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMRWC), FALSE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMRMC), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMB), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVMB), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVDC), TRUE);
+        m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVP), TRUE);
+        m_pMVTO = m_pCAP;
+        m_pMVRSR = m_pCAP;
+        m_pMVRS = m_pCAP;
+        m_pMVRFG = m_pCAP;
+        m_pMPCVRSR = m_pCAP;
+        m_pMVRC = m_pCAP;
+        m_pMVRI = m_pCAP;
+        m_pD3DFSC = m_pCAP;
+
+        const CAppSettings& s = AfxGetAppSettings();
+        m_pVideoWnd = &m_wndView;
+
+        if (m_pMFVDC) {
+            m_pMFVDC->SetVideoWindow(m_pVideoWnd->m_hWnd);
+        } else if (m_pVMRWC) {
+            m_pVMRWC->SetVideoClippingWindow(m_pVideoWnd->m_hWnd);
         }
 
-        if (fVidPrev) {
-            m_pGB->Render(pVidPrevPin);
-
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP2), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pCAP3), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMRWC), FALSE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMRMC), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pVMB), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVMB), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVDC), TRUE);
-            m_pGB->FindInterface(IID_PPV_ARGS(&m_pMFVP), TRUE);
-            m_pMVTO = m_pCAP;
-            m_pMVRSR = m_pCAP;
-            m_pMVRS = m_pCAP;
-            m_pMVRFG = m_pCAP;
-            m_pMPCVRSR = m_pCAP;
-
-            const CAppSettings& s = AfxGetAppSettings();
-            m_pVideoWnd = &m_wndView;
-
-            if (m_pMFVDC) {
-                m_pMFVDC->SetVideoWindow(m_pVideoWnd->m_hWnd);
-            } else if (m_pVMRWC) {
-                m_pVMRWC->SetVideoClippingWindow(m_pVideoWnd->m_hWnd);
+        if (s.fShowOSD || s.fShowDebugInfo) { // Force OSD on when the debug switch is used
+            if (m_pMVTO) {
+                m_OSD.Start(m_pVideoWnd, m_pMVTO);
+            } else if (m_fFullScreen && !m_fAudioOnly && m_pCAP3) { // MPCVR
+                m_OSD.Start(m_pVideoWnd, m_pVMB, m_pMFVMB, false);
+            } else if (!m_fAudioOnly && IsD3DFullScreenMode() && (m_pVMB || m_pMFVMB)) {
+                m_OSD.Start(m_pVideoWnd, m_pVMB, m_pMFVMB, true);
+            } else {
+                m_OSD.Start(m_pOSDWnd);
             }
-
-            if (s.fShowOSD || s.fShowDebugInfo) { // Force OSD on when the debug switch is used
-                if (m_pMVTO) {
-                    m_OSD.Start(m_pVideoWnd, m_pMVTO);
-                } else if (m_fFullScreen && !m_fAudioOnly && m_pCAP3) { // MPCVR
-                    m_OSD.Start(m_pVideoWnd, m_pVMB, m_pMFVMB, false);
-                } else if (!m_fAudioOnly && IsD3DFullScreenMode() && (m_pVMB || m_pMFVMB)) {
-                    m_OSD.Start(m_pVideoWnd, m_pVMB, m_pMFVMB, true);
-                } else {
-                    m_OSD.Start(m_pOSDWnd);
-                }
-            }
-        }
-
-        if (fVidCap) {
-            IBaseFilter* pBF[3] = {pVidBuffer, pVidEnc, pMux};
-            HRESULT hr2 = BuildCapture(pVidCapPin, pBF, MEDIATYPE_Video, &m_wndCaptureBar.m_capdlg.m_mtcv);
-            UNREFERENCED_PARAMETER(hr2);
-        }
-
-        m_pAMDF.Release();
-        if (m_pCGB && FAILED(m_pCGB->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, m_pVidCap, IID_PPV_ARGS(&m_pAMDF)))) {
-            TRACE(_T("Warning: No IAMDroppedFrames interface for vidcap capture"));
         }
     }
 
-    //if (m_pAudCap)
-    {
-        bool fAudPrev = pAudPrevPin && fAPreview;
-        bool fAudCap = pAudCapPin && fACapture && fFileOutput && m_wndCaptureBar.m_capdlg.m_fAudOutput;
+    if (fAudPrev) {
+        m_pGB->Render(pAudPrevPin);
+    }
 
-        if (fAPreview == 2 && !fAudCap && pAudCapPin) {
-            pAudPrevPin = pAudCapPin;
-            pAudCapPin = nullptr;
-        }
+    if (fVidCap) {
+        IBaseFilter* pBF[3] = {pVidBuffer, pVidEnc, pMux};
+        HRESULT hr2 = BuildCapture(pVidCapPin, pBF, MEDIATYPE_Video, &m_wndCaptureBar.m_capdlg.m_mtcv);
+        UNREFERENCED_PARAMETER(hr2);
+    }
 
-        if (fAudPrev) {
-            m_pGB->Render(pAudPrevPin);
-        }
+    m_pAMDF.Release();
+    if (m_pCGB && FAILED(m_pCGB->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, m_pVidCap, IID_PPV_ARGS(&m_pAMDF)))) {
+        TRACE(_T("Warning: No IAMDroppedFrames interface for vidcap capture"));
+    }
 
-        if (fAudCap) {
-            IBaseFilter* pBF[3] = {pAudBuffer, pAudEnc, pAudMux ? pAudMux : pMux};
-            HRESULT hr2 = BuildCapture(pAudCapPin, pBF, MEDIATYPE_Audio, &m_wndCaptureBar.m_capdlg.m_mtca);
-            UNREFERENCED_PARAMETER(hr2);
-        }
+    if (fAudCap) {
+        IBaseFilter* pBF[3] = {pAudBuffer, pAudEnc, pAudMux ? pAudMux : pMux};
+        HRESULT hr2 = BuildCapture(pAudCapPin, pBF, MEDIATYPE_Audio, &m_wndCaptureBar.m_capdlg.m_mtca);
+        UNREFERENCED_PARAMETER(hr2);
     }
 
     if ((m_pVidCap || m_pAudCap) && fCapture && fFileOutput) {
@@ -21270,7 +21376,7 @@ void CMainFrame::OpenCurPlaylistItem(REFERENCE_TIME rtStart, bool reopen /* = fa
             return;
         }
         if (ProcessYoutubeDLURL(pli.m_ydlSourceURL, false, true)) {
-            OpenCurPlaylistItem(rtStart, false);
+            OpenCurPlaylistItem(rtStart, false, abRepeat);
             return;
         }
     }
@@ -24179,20 +24285,6 @@ BOOL CMainFrame::Create(LPCTSTR lpszClassName, LPCTSTR lpszWindowName, DWORD dwS
     return FALSE;
 }
 
-void CMainFrame::enableFileDialogHook(CMPCThemeUtil* helper) {
-    if (AfxGetAppSettings().bWindows10DarkThemeActive) { //hard coded behavior for windows 10 dark theme file dialogs, irrespsective of theme loaded by user (fixing windows bugs)
-        watchingDialog = themableDialogTypes::windowsFileDialog;
-        dialogHookHelper = helper;
-    }
-}
-
-void CMainFrame::enableDialogHook(CMPCThemeUtil* helper, themableDialogTypes type) {
-    if (AppIsThemeLoaded()) {
-        watchingDialog = type;
-        dialogHookHelper = helper;
-    }
-}
-
 bool CMainFrame::isSafeZone(CPoint pt) {
     CRect r;
     m_wndSeekBar.GetClientRect(r);
@@ -24291,14 +24383,6 @@ LRESULT CMainFrame::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
                 break;
         }
         return 0;
-    } else if (watchingDialog != themableDialogTypes::None && nullptr != dialogHookHelper && message == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
-        dialogHookHelper->themableDialogHandle = (HWND)lParam;
-        foundDialog = watchingDialog;
-        watchingDialog = themableDialogTypes::None;
-        //capture but process message normally
-    } else if (message == WM_GETICON && foundDialog == themableDialogTypes::windowsFileDialog && nullptr != dialogHookHelper && nullptr != dialogHookHelper->themableDialogHandle) {
-        dialogHookHelper->subClassFileDialog(this);
-        foundDialog = themableDialogTypes::None;
     }
 
     if (message == WM_NCLBUTTONDOWN && wParam == HTCAPTION && !m_pMVRSR) {

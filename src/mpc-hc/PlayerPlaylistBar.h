@@ -119,6 +119,7 @@ private:
     bool m_bScrollToCurrentPending = false; // a scroll was deferred while the bar had no geometry
     int FindItem(const POSITION pos) const;
     POSITION FindPos(int i);
+    POSITION FindPosById(UINT id);
     void RebuildPosMap();
     void InvalidatePlayingItem(POSITION oldPos, POSITION newPos);
     std::unordered_map<POSITION, int> m_posToIndex;
@@ -135,7 +136,6 @@ private:
     bool m_bHiddenDueToFullscreen;
 
     CDropTarget m_dropTarget;
-    void OnDropFiles(CAtlList<CString>& slFiles, DROPEFFECT) override;
     DROPEFFECT OnDropAccept(COleDataObject*, DWORD, CPoint) override;
 
     CString m_playListPath;
@@ -150,6 +150,9 @@ public:
     virtual ~CPlayerPlaylistBar();
 
     BOOL Create(CWnd* pParentWnd, UINT defDockBarID);
+
+    // public so the main frame can hand over a drop that ole32 routed to it (#4265)
+    void OnDropFiles(CAtlList<CString>& slFiles, DROPEFFECT) override;
 
     virtual void ReloadTranslatableResources();
 
