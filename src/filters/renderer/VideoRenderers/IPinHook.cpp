@@ -181,6 +181,10 @@ static IMemInputPinC* g_pNativeInputPin = nullptr;
 static bool g_nativeSampleFlushing = false;
 static HRESULT g_nativeSampleError = S_OK;
 static CEvent g_nativeSampleChanged(FALSE, FALSE);
+// LAV's native DXVA2 allocator marker (DXVA2SurfaceAllocator.h).
+static const IID IID_LAVDXVA2Sample = {
+    0x50a8a9a1, 0xff44, 0x45c1, {0x9d, 0xc2, 0x79, 0x06, 0x6e, 0xd1, 0xe5, 0x76}
+};
 struct NativeSample {
     CComPtr<IMediaSample> sample;
     REFERENCE_TIME time;
@@ -278,8 +282,14 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
     bool retained = false;
     if (g_retainNativeSamples && This == g_pNativeInputPin && hasTime
             && rtStop > 0 && pSample->IsPreroll() != S_OK) {
+        // EVR's software allocator also exposes D3D surfaces through IMFGetService.
+        // Retaining those samples deadlocks a seek: BeginFlush holds EVR's lock
+        // while waiting for the presenter, whose sample Release needs that lock.
+        // Only LAV's native DXVA2 samples need the decoder slot lifetime fix.
+        CComPtr<IUnknown> pNativeSample;
         CComPtr<IMFGetService> pGS;
-        if (SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
+        if (SUCCEEDED(pSample->QueryInterface(IID_LAVDXVA2Sample, (void**)&pNativeSample))
+                && SUCCEEDED(pSample->QueryInterface(IID_PPV_ARGS(&pGS))) && pGS) {
             CComPtr<IDirect3DSurface9> pSurface;
             if (SUCCEEDED(pGS->GetService(MR_BUFFER_SERVICE, IID_PPV_ARGS(&pSurface))) && pSurface) {
                 // A surface reference alone does not reserve the decoder allocator's
