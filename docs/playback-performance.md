@@ -64,3 +64,13 @@ extra throttled SMTC timeline call immediately before the forced update.
 Release x64 validation: long AV1 and native H.264 forward/backward seeks,
 three paused seeks and three EOF repeats per decoder passed. A burst of ninety
 paused seeks retained the final 1.7 s target and resumed playback successfully.
+
+## File switching
+
+Discover statistics interfaces and create statistics labels only when that
+panel is selected. Manual showing initializes it before layout; the statistics
+timer handles showing through presets. Each new file invalidates the setup.
+In the diagnostic run, hidden-panel setup fell from about 5–6 ms to 0.001–0.002
+ms. This is a small component of the roughly 400 ms open, not a promise of a
+large overall speedup. Eight alternating AV1/H.264 opens and statistics toggling
+completed successfully. Decoder and renderer creation are unchanged.

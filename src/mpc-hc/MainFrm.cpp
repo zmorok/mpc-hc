@@ -2699,6 +2699,10 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
             }
             const CAppSettings& s = AfxGetAppSettings();
             if (m_wndStatsBar.IsVisible()) {
+                if (!m_bStatsBarInitialized) {
+                    OpenSetupStatsBar(true);
+                    RecalcLayout();
+                }
                 CString rate;
                 rate.Format(_T("%.3fx"), m_dSpeedRate);
                 if (m_pQP) {
@@ -8992,8 +8996,15 @@ void CMainFrame::OnUpdateViewCaptionmenu(CCmdUI* pCmdUI)
 
 void CMainFrame::OnViewControlBar(UINT nID)
 {
+    CDeferredActionScope actionScope(*this);
+
     nID -= ID_VIEW_SEEKER;
-    m_controls.ToggleControl(static_cast<CMainFrameControls::Toolbar>(nID));
+    const auto toolbar = static_cast<CMainFrameControls::Toolbar>(nID);
+    // Populate before ToggleControl calculates the newly visible bar's height.
+    if (toolbar == CMainFrameControls::Toolbar::STATS && !m_controls.ControlChecked(toolbar)) {
+        OpenSetupStatsBar(true);
+    }
+    m_controls.ToggleControl(toolbar);
 }
 
 void CMainFrame::OnUpdateViewControlBar(CCmdUI* pCmdUI)
@@ -16792,12 +16803,19 @@ bool CMainFrame::UpdateChapterInInfoBar(bool bRecalcLayout /*= true*/)
     return bChanged;
 }
 
-void CMainFrame::OpenSetupStatsBar()
+void CMainFrame::OpenSetupStatsBar(bool force /*= false*/)
 {
     PlayerTimingScope timing(_T("OpenSetupStatsBar"));
+    m_bStatsBarInitialized = false;
     m_wndStatsBar.RemoveAllLines();
 
+    // Discover statistics interfaces only when the panel is requested. The
+    // visible-panel timer also handles presets and automatic control changes.
+    if (!force && !m_controls.ControlChecked(CMainFrameControls::Toolbar::STATS)) {
+        return;
+    }
     if (GetLoadState() == MLS::LOADED) {
+        m_bStatsBarInitialized = true;
         CString info(_T('-'));
         bool bFoundIBitRateInfo = false;
 

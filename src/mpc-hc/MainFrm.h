@@ -769,7 +769,7 @@ protected:
     void OpenSetupAudio();
     void OpenSetupInfoBar(bool bClear = true);
     bool UpdateChapterInInfoBar(bool bRecalcLayout = true);
-    void OpenSetupStatsBar();
+    void OpenSetupStatsBar(bool force = false);
     void CheckSelectedAudioStream();
     void CheckSelectedVideoStream();
     void OpenSetupStatusBar();
@@ -1008,6 +1008,7 @@ protected:  // control bar embedded members
     CPlayerToolBar m_wndToolBar;
     CPlayerInfoBar m_wndInfoBar;
     CPlayerInfoBar m_wndStatsBar;
+    bool m_bStatsBarInitialized = false;
     CPlayerStatusBar m_wndStatusBar;
 
     CPlayerSubresyncBar m_wndSubresyncBar;
