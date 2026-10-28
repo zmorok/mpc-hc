@@ -331,13 +331,11 @@ IF %ERRORLEVEL% NEQ 0 EXIT /B
 
 IF /I "%~1" == "x64" (
   SET MPCHC_INNO_DEF=%MPCHC_INNO_DEF% /Dx64Build
-  SET MPCHC_COPY_DX_DLL_ARGS=x64
-) ELSE SET MPCHC_COPY_DX_DLL_ARGS=x86
+)
 
 
 IF DEFINED MPCHC_LITE (
   SET MPCHC_INNO_DEF=%MPCHC_INNO_DEF% /DMPCHC_LITE
-  SET MPCHC_COPY_DX_DLL_ARGS=%MPCHC_COPY_DX_DLL_ARGS% " Lite"
 )
 
 CALL "%COMMON%" :SubDetectInnoSetup
@@ -372,12 +370,6 @@ IF /I "%~2" == "Win32" (
   SET ARCH=x86
 ) ELSE (
   SET ARCH=x64
-)
-
-IF DEFINED MPCHC_LITE (
-  CALL :SubCopyDXDll %ARCH% " Lite"
-) ELSE IF /I "%NAME%" == "MPC-HC" (
-  CALL :SubCopyDXDll %ARCH%
 )
 
 PUSHD "%BIN_DIR%"
@@ -435,8 +427,8 @@ IF /I "%NAME%" == "MPC-HC" (
     COPY /Y /V "%VS_OUT_DIR%\%LAVFILTERSDIR%\*.dll"       "%PCKG_NAME%\%LAVFILTERSDIR%" >NUL
     COPY /Y /V "%VS_OUT_DIR%\%LAVFILTERSDIR%\*.manifest"  "%PCKG_NAME%\%LAVFILTERSDIR%" >NUL
   )
-  COPY /Y /V "%VS_OUT_DIR%\d3dcompiler_%MPC_D3D_COMPILER_VERSION%.dll" "%PCKG_NAME%\d3dcompiler_%MPC_D3D_COMPILER_VERSION%.dll" >NUL
-  COPY /Y /V "%VS_OUT_DIR%\d3dx9_%MPC_DX_SDK_NUMBER%.dll"              "%PCKG_NAME%\d3dx9_%MPC_DX_SDK_NUMBER%.dll" >NUL
+  COPY /Y /V "..\distrib\%ARCH%\d3dcompiler_%MPC_D3D_COMPILER_VERSION%.dll" "%PCKG_NAME%\d3dcompiler_%MPC_D3D_COMPILER_VERSION%.dll" >NUL
+  COPY /Y /V "..\distrib\%ARCH%\d3dx9_%MPC_DX_SDK_NUMBER%.dll"              "%PCKG_NAME%\d3dx9_%MPC_DX_SDK_NUMBER%.dll" >NUL
   IF NOT EXIST "%PCKG_NAME%\Shaders" MD "%PCKG_NAME%\Shaders"
   COPY /Y /V "..\src\mpc-hc\res\shaders\dx9\*.hlsl" "%PCKG_NAME%\Shaders" >NUL
   IF NOT EXIST "%PCKG_NAME%\Shaders11" MD "%PCKG_NAME%\Shaders11"
