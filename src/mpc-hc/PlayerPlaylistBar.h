@@ -69,6 +69,7 @@ private:
 
     CMainFrame* m_pMainFrame;
     int inlineEditXpos;
+    int inlineEditItem;
     CMPCThemeInlineEdit m_edit;
 
     CFont m_font;
@@ -108,7 +109,7 @@ private:
     bool PlaylistCanStripPath(CString path);
     bool ParseMPCPlayList(CString fn);
     bool SaveMPCPlayList(CString fn, CTextFile::enc e);
-    bool ParseM3UPlayList(CString fn, bool* lav_fallback);
+    bool ParseM3UPlayList(CString fn, bool* lav_fallback, std::vector<CString> parents = {});
     bool ParseCUESheet(CString fn);
     
     void SetupList();

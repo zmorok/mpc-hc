@@ -116,7 +116,7 @@
 #include "MPCFolderPickerDialog.h"
 
 #include "stb/stb_image.h"
-#include "stb/stb_image_resize2.h"
+#include "stb/deprecated/stb_image_resize2.h"
 #include "stb/stb_image_write.h"
 
 #include  "Logger.h"
@@ -333,6 +333,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_MESSAGE(WM_POSTOPEN, OnFilePostOpenmedia)
     ON_MESSAGE(WM_OPENFAILED, OnOpenMediaFailed)
     ON_MESSAGE(WM_MPC_RUN_DEFERRED, OnRunDeferredActions)
+    ON_MESSAGE(WM_MPC_UI_REQUEST, OnUIRequest)
     ON_MESSAGE(WM_TUNER_NEW_CHANNEL, OnHeadlessScanNewChannel)
     ON_MESSAGE(WM_TUNER_SCAN_END, OnHeadlessScanEnd)
     ON_MESSAGE(WM_DVB_EIT_DATA_READY, OnCurrentChannelInfoUpdated)
@@ -885,6 +886,7 @@ CMainFrame::CMainFrame()
     , m_bFirstPlay(false)
     , m_bOpeningInAutochangedMonitorMode(false)
     , m_bPausedForAutochangeMonitorMode(false)
+    , m_bPausedByMinimize(false)
     , m_bThemeChangePending(false)
     , m_fAudioOnly(true)
     , m_iDVDDomain(DVD_DOMAIN_Stop)
@@ -1027,6 +1029,10 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
     }
 
     CMPCThemeUtil::enableWindows10DarkFrame(this);
+
+    // keep DWM rendering the frame, or uxtheme paints a basic frame while the style changes for fullscreen
+    DWMNCRENDERINGPOLICY policy = DWMNCRP_ENABLED;
+    ::DwmSetWindowAttribute(m_hWnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
 
     if (IsWindows8Point1OrGreater()) {
         m_dpi.Override(m_hWnd);
@@ -1361,6 +1367,11 @@ LRESULT CMainFrame::OnRunDeferredActions(WPARAM wParam, LPARAM lParam)
     }
 
     if (m_bDeferredOnClose) {
+        if (m_pOptionsSheet) {
+            // a holder returned inside the options sheet's pump; ShowOptions posts
+            // again once the sheet is down
+            return 0;
+        }
         // exiting anyway, so the pending opens and closes are pointless
         m_bDeferredOnClose = false;
         m_deferredActions.clear();
@@ -1416,19 +1427,36 @@ bool CMainFrame::DeferIfNested(DeferredActionType type, std::function<void()> ac
     return true;
 }
 
+// A sent message is dispatched wherever this thread next retrieves one, which
+// includes the waits on the graph thread while a file opens or closes; the
+// builders only read the lists while the load state is LOADED, and that state
+// changes on this thread, so nothing is read while the graph thread rewrites it.
+LRESULT CMainFrame::OnUIRequest(WPARAM wParam, LPARAM lParam)
+{
+    auto pRequest = reinterpret_cast<UIRequest*>(lParam);
+    pRequest->build(this, pRequest->body);
+    pRequest->Release();
+    return 0;
+}
+
 void CMainFrame::OnClose()
 {
     CAppSettings& s = AfxGetAppSettings();
 
-    if (m_nDeferredActionDepth > 0) {
-        // reached from inside a holder's nested pump; the exit runs once that
-        // holder has returned (see OnRunDeferredActions). Queued like a posted
-        // SC_CLOSE, so an open dispatched in between is dropped
+    if (m_nDeferredActionDepth > 0 || m_pOptionsSheet) {
+        // reached from inside a holder's nested pump, or the options sheet's; the
+        // exit runs once that holder or ShowOptions has returned (see
+        // OnRunDeferredActions). Queued like a posted SC_CLOSE, so an open
+        // dispatched in between is dropped
         m_bDeferredOnClose = true;
         m_OnClose_queued = true;
         if (m_nTrackedMenuDepth > 0) {
             // otherwise the exit waits for the user to close the menu
             ::EndMenu();
+        }
+        if (m_pOptionsSheet && m_pOptionsSheet->GetSafeHwnd()) {
+            // likewise for the sheet; unapplied changes are dropped as by its Cancel button
+            m_pOptionsSheet->PostMessage(PSM_PRESSBUTTON, PSBTN_CANCEL);
         }
         return;
     }
@@ -1481,7 +1509,7 @@ void CMainFrame::OnClose()
     m_wndPlaylistBar.SavePlaylist();
     m_wndPlaylistBar.ClearExternalPlaylistIfInvalid();
 
-    if (GetLoadState() == MLS::LOADED || GetLoadState() == MLS::LOADING) {
+    if (GetLoadState() == MLS::LOADED || GetLoadState() == MLS::LOADING || GetLoadState() == MLS::FAILING) {
         CloseMediaInternal();
     }
 
@@ -2029,6 +2057,24 @@ void CMainFrame::OnMoving(UINT fwSide, LPRECT pRect)
 
 void CMainFrame::OnSize(UINT nType, int cx, int cy)
 {
+    if (nType == SIZE_MINIMIZED) {
+        // Like locking the session (see OnSessionChange): video that nobody can see is paused,
+        // audio keeps playing, since minimizing is how people listen in the background.
+        if (AfxGetAppSettings().bPauseWhenMinimized && !m_bPausedByMinimize && GetLoadState() == MLS::LOADED
+                && !m_fAudioOnly && GetMediaStateDirect() == State_Running) {
+            SendMessage(WM_COMMAND, ID_PLAY_PAUSE);
+            // set after the pause, which clears it like any other play, pause or stop
+            m_bPausedByMinimize = true;
+        }
+    } else if (m_bPausedByMinimize && (nType == SIZE_RESTORED || nType == SIZE_MAXIMIZED)) {
+        m_bPausedByMinimize = false;
+        // still set means nothing has played, paused, stopped or closed since the pause
+        // above, so resume, unless that pause did not take (it can be disabled, e.g. for live streams)
+        if (GetLoadState() == MLS::LOADED && GetMediaStateDirect() == State_Paused) {
+            SendMessage(WM_COMMAND, ID_PLAY_PLAY);
+        }
+    }
+
     if (m_bTrayIcon && nType == SIZE_MINIMIZED) {
         ShowWindow(SW_HIDE);
     } else {
@@ -2112,6 +2158,20 @@ void CMainFrame::OnSizingFixWndToVideo(UINT nSide, LPRECT lpRect, bool bCtrl)
             newWindowSize.cy = long(newWindowSize.cx * videoSize.cy / (double)videoSize.cx + 0.5);
             newWindowSize.cx = long(newWindowSize.cy * videoSize.cx / (double)videoSize.cy + 0.5);
             break;
+    }
+
+    // Windows enlarges a window below its minimum size keeping its top-left corner, which
+    // would make the anchored right or bottom edge creep with every WM_SIZING, so stay above it
+    MINMAXINFO mmi = {};
+    OnGetMinMaxInfo(&mmi);
+    const CSize minSize(mmi.ptMinTrackSize.x - controlsSize.cx, mmi.ptMinTrackSize.y - controlsSize.cy);
+    if (newWindowSize.cx < minSize.cx) {
+        newWindowSize.cx = minSize.cx;
+        newWindowSize.cy = long(newWindowSize.cx * videoSize.cy / (double)videoSize.cx + 0.5);
+    }
+    if (newWindowSize.cy < minSize.cy) {
+        newWindowSize.cy = minSize.cy;
+        newWindowSize.cx = std::max(minSize.cx, long(newWindowSize.cy * videoSize.cx / (double)videoSize.cy + 0.5));
     }
 
     newWindowSize += controlsSize;
@@ -2878,10 +2938,7 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
                                  AATR.bNumberOfChannels,
                                  ResStr(AATR.bNumberOfChannels > 1 ? IDS_MAINFRM_13 : IDS_MAINFRM_12).GetString());
 
-                    m_wndStatusBar.SetStatusBitmap(
-                        AATR.bNumberOfChannels == 1 ? IDB_AUDIOTYPE_MONO
-                        : AATR.bNumberOfChannels >= 2 ? IDB_AUDIOTYPE_STEREO
-                        : IDB_AUDIOTYPE_NOAUDIO);
+                    m_wndStatusBar.SetAudioChannels(AATR.bNumberOfChannels);
                 }
 
                 if (m_wndInfoBar.IsVisible()) {
@@ -3858,9 +3915,7 @@ LRESULT CMainFrame::OnGraphNotify(WPARAM wParam, LPARAM lParam)
                 if (m_fCustomGraph) {
                     int nAudioChannels = (int)evParam1;
 
-                    m_wndStatusBar.SetStatusBitmap(nAudioChannels == 1 ? IDB_AUDIOTYPE_MONO
-                                                   : nAudioChannels >= 2 ? IDB_AUDIOTYPE_STEREO
-                                                   : IDB_AUDIOTYPE_NOAUDIO);
+                    m_wndStatusBar.SetAudioChannels(nAudioChannels);
                 }
                 break;
             case EC_BG_ERROR:
@@ -4912,7 +4967,7 @@ LRESULT CMainFrame::OnOpenMediaFailed(WPARAM wParam, LPARAM lParam)
     m_iReloadSubIdx = -1;
 
     if (wParam == PM_FILE && m_OpenMediaFailedCount < 5) {
-        CPlaylistItem pli;
+        CPlaylistItem pli = CPlaylistItem(true);
         if (m_wndPlaylistBar.GetCur(pli) && pli.m_bYoutubeDL && m_sydlLastProcessURL != pli.m_ydlSourceURL) {
             OpenCurPlaylistItem(0, true);  // Try to reprocess if failed first time.
             return 0;
@@ -6337,7 +6392,7 @@ void CMainFrame::OnFileSaveAs()
     CString in, out, ext;
     CAppSettings& s = AfxGetAppSettings();
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (m_wndPlaylistBar.GetCur(pli, true)) {
         in = pli.m_fns.GetHead();
     } else {
@@ -7236,7 +7291,7 @@ bool CMainFrame::SaveThumbnails(LPCTSTR fn)
         DVD_HMSF_TIMECODE hmsf = RT2HMS_r(rtDur);
 
         CString title;
-        CPlaylistItem pli;
+        CPlaylistItem pli = CPlaylistItem(true);
         if (m_wndPlaylistBar.GetCur(pli, true) && pli.m_bYoutubeDL && pli.m_label && !pli.m_label.IsEmpty()) {
             title = pli.m_label;
         } else {
@@ -7306,7 +7361,7 @@ CString CMainFrame::MakeSnapshotFileName(BOOL thumbnails)
     auto fullName = m_wndPlaylistBar.GetCurFileName(true);
     bool needsExtensionRemoval = !s.bSnapShotKeepVideoExtension;
     if (IsPlaylistFile(videoFn)) {
-        CPlaylistItem pli;
+        CPlaylistItem pli = CPlaylistItem(true);
         if (m_wndPlaylistBar.GetCur(pli, true)) {
             videoFn = pli.m_label;
             needsExtensionRemoval = false;
@@ -7507,7 +7562,7 @@ void CMainFrame::OnCmdLineSaveThumbnails()
         return;
     }
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (!m_wndPlaylistBar.GetCur(pli, true)) {
         AfxGetMyApp()->ReportCmdLineError(_T("no file to take thumbnails of"));
         return;
@@ -8003,7 +8058,7 @@ void CMainFrame::OnFileProperties()
     if (m_pDVBState) {
         fn = m_pDVBState->sChannelName;
     } else {
-        CPlaylistItem pli;
+        CPlaylistItem pli = CPlaylistItem(true);
         if (m_wndPlaylistBar.GetCur(pli, true)) {
             fn = pli.m_fns.GetHead();
             if (pli.m_bYoutubeDL) {
@@ -10082,6 +10137,7 @@ void CMainFrame::OnPlayPlay()
     m_timerOneTime.Unsubscribe(TimerOneTimeSubscriber::DELAY_PLAYPAUSE_AFTER_AUTOCHANGE_MODE);
     m_bOpeningInAutochangedMonitorMode = false;
     m_bPausedForAutochangeMonitorMode = false;
+    m_bPausedByMinimize = false;
 
     if (!IsStateClosedOrLoaded()) {
         return;
@@ -10194,7 +10250,7 @@ void CMainFrame::OnPlayPlay()
                     strOSD.LoadString(IDS_PLAY_BD);
                 } else {
                     strOSD = GetFileName();
-                    CPlaylistItem pli;
+                    CPlaylistItem pli = CPlaylistItem(true);
                     if (!strOSD.IsEmpty() && (!m_wndPlaylistBar.GetCur(pli) || !pli.m_bYoutubeDL)) {
                         strOSD.TrimRight('/');
                         strOSD.Replace('\\', '/');
@@ -10221,6 +10277,7 @@ void CMainFrame::OnPlayPause()
 {
     m_timerOneTime.Unsubscribe(TimerOneTimeSubscriber::DELAY_PLAYPAUSE_AFTER_AUTOCHANGE_MODE);
     m_bOpeningInAutochangedMonitorMode = false;
+    m_bPausedByMinimize = false;
 
     if (GetLoadState() != MLS::LOADED) {
         return;
@@ -10294,6 +10351,7 @@ void CMainFrame::OnPlayStop(bool is_closing)
     m_timerOneTime.Unsubscribe(TimerOneTimeSubscriber::DELAY_PLAYPAUSE_AFTER_AUTOCHANGE_MODE);
     m_bOpeningInAutochangedMonitorMode = false;
     m_bPausedForAutochangeMonitorMode = false;
+    m_bPausedByMinimize = false; // also on close, which stops through here
 
     KillTimersStop();
 
@@ -11376,30 +11434,34 @@ void CMainFrame::OnPlaySubtitles(UINT nID)
 
                     if (dlg.DoModal() == IDOK) {
                         {
-                            CAutoLock cAutoLock(&m_csSubLock);
                             bool defaultStyleChanged = false, otherStyleChanged = false;
+                            {
+                                CAutoLock cAutoLock(&m_csSubLock);
 
-                            for (size_t l = 0; l < pages.GetCount(); l++) {
-                                STSStyle tmpStyle = *styles[l];
-                                pages[l]->GetStyle(*styles[l]);
-                                if (pages[l]->GetStyleName() == L"Default") {
-                                    if (*styles[l] != s.subtitlesDefStyle) {
-                                        pRTS->m_bUsingPlayerDefaultStyle = false;
-                                        pRTS->SetDefaultStyle(*styles[l]);
-                                        defaultStyleChanged = true;
+                                for (size_t l = 0; l < pages.GetCount(); l++) {
+                                    STSStyle tmpStyle = *styles[l];
+                                    pages[l]->GetStyle(*styles[l]);
+                                    if (pages[l]->GetStyleName() == L"Default") {
+                                        if (*styles[l] != s.subtitlesDefStyle) {
+                                            pRTS->m_bUsingPlayerDefaultStyle = false;
+                                            pRTS->SetDefaultStyle(*styles[l]);
+                                            defaultStyleChanged = true;
+                                        }
+                                    } else if (tmpStyle != *styles[l]) {
+                                        otherStyleChanged = true;
                                     }
-                                } else if (tmpStyle != *styles[l]) {
-                                    otherStyleChanged = true;
+                                }
+                                if (otherStyleChanged || defaultStyleChanged) {
+                                    if (!defaultStyleChanged) { //it will already have triggered SetStyleChanged() internally
+                                        pRTS->SetStyleChanged();
+                                    }
+                                    pRTS->Deinit();
+                                    InvalidateSubtitle();
+                                    m_wndSubresyncBar.ReloadSubtitle();
                                 }
                             }
                             if (otherStyleChanged || defaultStyleChanged) {
-                                if (!defaultStyleChanged) { //it will already have triggered SetStyleChanged() internally
-                                    pRTS->SetStyleChanged();
-                                }
-                                pRTS->Deinit();
-                                InvalidateSubtitle();
                                 RepaintVideo();
-                                m_wndSubresyncBar.ReloadSubtitle();
                             }
                         }
                     }
@@ -11590,6 +11652,10 @@ void CMainFrame::OnPlayVolumeBoost(UINT nID)
 
 void CMainFrame::SetVolumeBoost(UINT nAudioBoost)
 {
+    if (!IsStateLoaded()) {
+        return;
+    }
+
     if (CComQIPtr<IAudioSwitcherFilter> pASF = FindFilter(__uuidof(CAudioSwitcherFilter), m_pGB)) {
         bool fNormalize, fNormalizeRecover;
         UINT nMaxNormFactor, nBoost;
@@ -12118,7 +12184,7 @@ void CMainFrame::OnNavigateSkip(UINT nID)
 bool CMainFrame::CanSkipFromClosedFile() {
     if (GetPlaybackMode() == PM_NONE && AfxGetAppSettings().fUseSearchInFolder) {
         if (m_wndPlaylistBar.GetCount() == 1) {
-            CPlaylistItem pli;
+            CPlaylistItem pli = CPlaylistItem(true);
             return m_wndPlaylistBar.GetCur(pli, true) && !PathUtils::IsURL(pli.m_fns.GetHead());
         } else if (m_wndPlaylistBar.GetCount() == 0 && !lastOpenFile.IsEmpty()) {
             return !PathUtils::IsURL(lastOpenFile);
@@ -12496,7 +12562,7 @@ void CMainFrame::AddFavorite(bool fDisplayMessage, bool fShowDialog)
         CString desc = GetFileName();
 
         // capture the rest of the entry here as well, the file can change while the modal pump runs
-        CPlaylistItem pli;
+        CPlaylistItem pli = CPlaylistItem(true);
         bool bHasCur = !is_BD && m_wndPlaylistBar.GetCur(pli);
         REFERENCE_TIME rtPos = GetPos();
         ABRepeat ab = abRepeat;
@@ -13624,8 +13690,10 @@ void CMainFrame::ToggleFullscreen(bool fToNearest, bool fSwitchScreenResWhenHasT
         }
 
         ModifyStyle(dwRemove, dwAdd, SWP_NOZORDER);
+        restoringWindowRect = true; //do not adjust for DPI if moving to a monitor with a different DPI
         SetWindowPos(pInsertAfter, windowRect.left, windowRect.top, windowRect.Width(), windowRect.Height(),
             SWP_NOSENDCHANGING | SWP_FRAMECHANGED);
+        restoringWindowRect = false;
 
         // If MPC-HC wasn't previously set "on top" by an external tool,
         // we restore the current internal on top state. (2/2)
@@ -15797,7 +15865,7 @@ void CMainFrame::OpenFile(OpenFileData* pOFD)
             if (bMainFile) {
                 auto* pMRU = &s.MRU;
                 RecentFileEntry r;
-                CPlaylistItem pli;
+                CPlaylistItem pli = CPlaylistItem(true);
                 if (m_wndPlaylistBar.GetCur(pli, true)) {
                     if (pli.m_bYoutubeDL && !pli.m_ydlSourceURL.IsEmpty()) {
                         pMRU->LoadMediaHistoryEntryFN(pli.m_ydlSourceURL, r);
@@ -15860,7 +15928,7 @@ void CMainFrame::OpenFile(OpenFileData* pOFD)
                 }
             }
             else {
-                CPlaylistItem pli;
+                CPlaylistItem pli = CPlaylistItem(true);
                 if (!m_wndPlaylistBar.GetCur(pli) || !pli.m_bYoutubeDL) {
                     CRecentFileList* pMRUDub = &s.MRUDub;
                     pMRUDub->ReadList();
@@ -16041,7 +16109,7 @@ void CMainFrame::SetupChapters()
         }
     }
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (m_wndPlaylistBar.GetCur(pli, true) && pli.m_cue) {
         SetupCueChapters(pli.m_cue_filename);
     }
@@ -16053,7 +16121,7 @@ void CMainFrame::SetupCueChapters(CString cuefn) {
     CString str;
     int cue_index(-1);
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (!m_wndPlaylistBar.GetCur(pli, true)) {
         ASSERT(false);
         return;
@@ -16872,7 +16940,6 @@ void CMainFrame::CheckSelectedAudioStream()
 
     int nChannels = 0;
     int audiostreamcount = 0;
-    UINT audiobitmapid = IDB_AUDIOTYPE_NOAUDIO;
     m_loadedAudioTrackIndex = -1;
 
     if (m_pAudioSwitcherSS) {
@@ -16972,12 +17039,7 @@ void CMainFrame::CheckSelectedAudioStream()
         UpdateSelectedAudioStreamInfo(-1, nullptr, -1);
     }
 
-    if (nChannels >= 2) {
-        audiobitmapid = IDB_AUDIOTYPE_STEREO;
-    } else if (nChannels == 1) {
-        audiobitmapid = IDB_AUDIOTYPE_MONO;
-    }
-    m_wndStatusBar.SetStatusBitmap(audiobitmapid);
+    m_wndStatusBar.SetAudioChannels(nChannels);
 }
 
 void CMainFrame::CheckSelectedVideoStream()
@@ -17807,7 +17869,7 @@ bool CMainFrame::OpenMediaPrivate(CAutoPtr<OpenMediaData> pOMD)
                 }
             }
 
-            CPlaylistItem pli;
+            CPlaylistItem pli = CPlaylistItem(true);
             if (m_wndPlaylistBar.GetCur(pli) && pli.m_bYoutubeDL && !s.sYDLSubsPreference.IsEmpty()) {
                 POSITION pos2 = pli.m_ydl_subs.GetHeadPosition();
                 while (pos2) {
@@ -20239,6 +20301,9 @@ void CMainFrame::SetSubtitle(const SubtitleInput& subInput, bool skip_lcid /* = 
             } else {
                 m_wndSubresyncBar.SetSubtitle(nullptr, m_pCAP->GetFPS(), g_bExternalSubtitle);
             }
+            // an index into the previous track's subresync list means nothing for the new one
+            m_nCurSubtitle = -1;
+            m_lSubtitleShift = 0;
         }
     }
 
@@ -21298,20 +21363,32 @@ void CMainFrame::ShowOptions(int idPage/* = 0*/)
     INT_PTR iRes;
     do {
         CPPageSheet options(ResStr(IDS_OPTIONS_CAPTION), m_pGB, GetModalParent(), idPage);
+        m_pOptionsSheet = &options;
         iRes = options.DoModal();
+        m_pOptionsSheet = nullptr;
         idPage = 0; // If we are to show the dialog again, always show the latest page
         if (m_bThemeChangePending) {
             m_bThemeChangePending = false;
             ApplyThemeChange();
         }
-    } while (iRes == CPPageSheet::APPLY_UI_CHANGE); // check if we exited the dialog so that the language or theme change can be applied
+        // check if we exited the dialog so that the language or theme change can be applied
+    } while (iRes == CPPageSheet::APPLY_UI_CHANGE && !m_bDeferredOnClose);
+
+    if (m_bDeferredOnClose) {
+        // an exit arrived while the sheet was up (see OnClose). Under a holder, its
+        // scope exit posts this instead
+        if (m_nDeferredActionDepth == 0) {
+            PostMessage(WM_MPC_RUN_DEFERRED);
+        }
+        return;
+    }
 
     switch (iRes) {
         case CPPageSheet::RESET_SETTINGS:
-            // Request MPC-HC to close itself
-            SendMessage(WM_CLOSE);
-            // and immediately reopen
-            ShellExecute(nullptr, _T("open"), PathUtils::GetProgramPath(true), _T("/reset"), nullptr, SW_SHOWNORMAL);
+            // Close, and reopen with /reset from ExitInstance once the frame is gone.
+            // Closing from here would delete the frame under ShowOptions and its callers
+            AfxGetMyApp()->m_bRelaunchWithReset = true;
+            PostMessage(WM_CLOSE);
             break;
         default:
             ASSERT(iRes != CPPageSheet::APPLY_UI_CHANGE);
@@ -21392,7 +21469,7 @@ void CMainFrame::OpenCurPlaylistItem(REFERENCE_TIME rtStart, bool reopen /* = fa
         return;
     }
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (!m_wndPlaylistBar.GetCur(pli)) {
         m_wndPlaylistBar.SetFirstSelected();
         if (!m_wndPlaylistBar.GetCur(pli)) {
@@ -22041,7 +22118,7 @@ void CMainFrame::CloseMediaInternal(bool bNextIsQueued/* = false*/, bool bPendin
                             processmsg = false;
                             #if !defined(_DEBUG) && USE_DRDUMP_CRASH_REPORTER && (MPC_VERSION_REV > 10)
                             if (extendedwait && CrashReporter::IsEnabled()) {
-                                if (IDYES == AfxMessageBox(L"It looks like the filter graph might be deadlocked.\n\nClick YES to submit a crash report.\nClick NO to terminate the player process.", MB_ICONEXCLAMATION | MB_YESNO, 0)) {
+                                if (IDYES == AfxMessageBox(L"It looks like the filter graph might be deadlocked.\n\nClick YES to submit a crash report.\nClick NO to terminate the player process.\n\nIf you can reproduce this problem with a specific file, then please share details with the developers.", MB_ICONEXCLAMATION | MB_YESNO, 0)) {
                                     throw 0xdead;
                                 }
                             }
@@ -22051,7 +22128,7 @@ void CMainFrame::CloseMediaInternal(bool bNextIsQueued/* = false*/, bool bPendin
                             if (s.iDSVideoRendererType == VIDRNDT_DS_MADVR) {
                                 timeoutmsg = L"Timeout while aborting filter graph creation.\n\nIf files load slowly with MadVR, you should change dithering in Madvr settings (Error Diffusion is broken on AMD GPU).\n\nClick YES to terminate player process. Click NO to wait longer (up to 15 seconds).";
                             } else {
-                                timeoutmsg = L"Timeout while aborting filter graph creation.\n\nClick YES to terminate player process. Click NO to wait longer (up to 15 seconds).";
+                                timeoutmsg = L"Timeout while aborting filter graph creation.\n\nClick YES to terminate player process. Click NO to wait longer (up to 15 seconds).\n\nIf you can reproduce this problem with a specific file, then please share details with the developers.";
                             }
                             if (USE_LOGGER(s)) {
                                 PLAYER_LOG(_T("CMainFrame::CloseMedia - Timeout when aborting filter graph creation"));
@@ -22082,11 +22159,11 @@ void CMainFrame::CloseMediaInternal(bool bNextIsQueued/* = false*/, bool bPendin
 
         // purge possible queued OnFilePostOpenmedia()
         if (PeekMessage(&msg, m_hWnd, WM_POSTOPEN, WM_POSTOPEN, PM_REMOVE | PM_NOYIELD)) {
-            free((OpenMediaData*)msg.lParam);
+            delete (OpenMediaData*)msg.lParam;
         }
         // purge possible queued OnOpenMediaFailed()
         if (PeekMessage(&msg, m_hWnd, WM_OPENFAILED, WM_OPENFAILED, PM_REMOVE | PM_NOYIELD)) {
-            free((OpenMediaData*)msg.lParam);
+            delete (OpenMediaData*)msg.lParam;
         }
 
         // abort finished, unset the flag
@@ -22240,7 +22317,7 @@ void CMainFrame::CloseMediaInternal(bool bNextIsQueued/* = false*/, bool bPendin
                     if (extendedwait || m_fFullScreen || s.hMasterWnd || hibernating || app_closing || m_OnClose_queued) {
                         #if !defined(_DEBUG) && USE_DRDUMP_CRASH_REPORTER && (MPC_VERSION_REV > 10)
                         if (extendedwait && CrashReporter::IsEnabled()) {
-                            if (IDYES == AfxMessageBox(L"It looks like the filter graph might be deadlocked.\n\nClick YES to submit a crash report.\nClick NO to terminate the player process.", MB_ICONEXCLAMATION | MB_YESNO, 0)) {
+                            if (IDYES == AfxMessageBox(L"It looks like the filter graph might be deadlocked.\n\nClick YES to submit a crash report.\nClick NO to terminate the player process.\n\nIf you can reproduce this problem with a specific file, then please share details with the developers.", MB_ICONEXCLAMATION | MB_YESNO, 0)) {
                                 throw 0xdead;
                             }
                         }
@@ -22254,7 +22331,7 @@ void CMainFrame::CloseMediaInternal(bool bNextIsQueued/* = false*/, bool bPendin
                             continue;
                         }
 
-                        CString timeoutmsg = L"Timeout when closing filter graph.\n\nClick YES to terminate player process. Click NO to wait longer (up to 15 seconds).";
+                        CString timeoutmsg = L"Timeout when closing filter graph.\n\nClick YES to terminate player process. Click NO to wait longer (up to 15 seconds).\n\nIf you can reproduce this problem with a specific file, then please share details with the developers.";
                         if (USE_LOGGER(s)) {
                             PLAYER_LOG(_T("CMainFrame::CloseMedia - Timeout when closing filter graph"));
                         }
@@ -23384,7 +23461,7 @@ void CMainFrame::SendNowPlayingToApi(bool sendtrackinfo)
             m_wndInfoBar.GetLine(StrRes(IDS_INFOBAR_AUTHOR), author);
             m_wndInfoBar.GetLine(StrRes(IDS_INFOBAR_DESCRIPTION), description);
 
-            CPlaylistItem pli;
+            CPlaylistItem pli = CPlaylistItem(true);
             if (m_wndPlaylistBar.GetCur(pli, true)) {
                 label = !pli.m_label.IsEmpty() ? pli.m_label : pli.m_fns.GetHead();
                 REFERENCE_TIME rtDur;
@@ -24745,7 +24822,7 @@ void CMainFrame::UpdateControlState(UpdateControlTarget target)
                     m_currentCoverPath = filename;
                     m_currentCoverAuthor = author;
                 } else {
-                    CPlaylistItem pli;
+                    CPlaylistItem pli = CPlaylistItem(true);
                     if (m_wndPlaylistBar.GetCur(pli) && !pli.m_cover.IsEmpty() && CLongPath(pli.m_cover).FileExists()) {
                         LoadArtToViews(pli.m_cover);
                     } else if (PathUtils::IsURL(filename)) {
@@ -25061,7 +25138,7 @@ SubtitleInput* CMainFrame::GetSubtitleInput(int& i, bool bIsOffset /*= false*/)
 
 CString CMainFrame::GetFileName()
 {
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (m_wndPlaylistBar.GetCur(pli, true)) {
         CString path(m_wndPlaylistBar.GetCurFileName(true));
         if (!pli.m_bYoutubeDL && m_pFSF) {
@@ -25146,6 +25223,16 @@ bool CMainFrame::GetDecoderType(CString& type) const
         return true;
     }
     return false;
+}
+
+// What Audio Info adds to the status text, for when it is turned off
+CString CMainFrame::GetAudioInfo() const
+{
+    CString info = m_statusbarAudioFormat;
+    if (!currentAudioLang.IsEmpty()) {
+        AppendWithDelimiter(info, currentAudioLang);
+    }
+    return info;
 }
 
 bool CMainFrame::ApplySubtitleRenderingParameters(ISubStream* pSubStream, bool bSecondary)
@@ -25755,7 +25842,7 @@ CString CMainFrame::getBestTitle(bool fTitleBarTextTitle) {
         }
     }
 
-    CPlaylistItem pli;
+    CPlaylistItem pli = CPlaylistItem(true);
     if (m_wndPlaylistBar.GetCur(pli, true) && pli.m_label && !pli.m_label.IsEmpty()) {
         if (fTitleBarTextTitle || pli.m_bYoutubeDL) {
             title = pli.m_label;
@@ -25898,7 +25985,7 @@ void CMainFrame::MediaTransportControlSetMedia() {
             if (CoverArt::FindEmbedded(pFilterGraph, internalCover)) {
                 m_media_trans_control.loadThumbnail(internalCover.data(), internalCover.size());
             } else {
-                CPlaylistItem pli;
+                CPlaylistItem pli = CPlaylistItem(true);
                 if (m_wndPlaylistBar.GetCur(pli) && !pli.m_cover.IsEmpty()) {
                     m_media_trans_control.loadThumbnail(pli.m_cover);
                 } else {

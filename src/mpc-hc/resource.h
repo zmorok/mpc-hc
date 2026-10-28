@@ -82,6 +82,8 @@
 #define IDF_SVG_GEAR                    710
 #define IDF_SVG_TICK                    711
 #define IDF_SVG_CROSS                   712
+#define IDF_SVG_AUDIOTYPE_NOAUDIO       713
+#define IDF_SVG_AUDIOTYPE_SPEAKER       714
 #define ID_FILE_OPENMEDIA               800
 #define ID_FILE_OPENDVDBD               801
 #define ID_FILE_OPENDEVICE              802
@@ -1811,6 +1813,7 @@
 #define IDS_CMD_DVBSCANOUT              57661
 #define IDS_CMD_DVBBANDWIDTH            57662
 #define IDS_CMD_DVBSYMBOLRATE           57663
+#define IDS_PPAGEADVANCED_PAUSE_WHEN_MINIMIZED 57664
 // MPC Audio Renderer
 #define IDS_FILTER_RESET_SETTINGS       57700
 #define IDS_ARS_WASAPI_MODE             57701
