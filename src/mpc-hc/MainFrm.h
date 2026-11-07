@@ -40,6 +40,7 @@
 #include "PlayerSubresyncBar.h"
 #include "PlayerPreView.h"
 #include "PlayerToolBar.h"
+#include "Snapshot.h"
 #include "SubtitleDlDlg.h"
 #include "TimerWrappers.h"
 #include "OSD.h"
@@ -61,11 +62,10 @@
 class CDebugShadersDlg;
 class CColorControlsDlg;
 class CHistoryDlg;
+class UpdateCheckerDlg;
 class CFullscreenWnd;
 struct DisplayMode;
 enum MpcCaptionState;
-class CMediaTypesDlg;
-class RarEntrySelectorDialog;
 
 interface IDSMChapterBag;
 interface IGraphBuilder2;
@@ -537,22 +537,8 @@ private:
 
     void ShowOptions(int idPage = 0);
 
-    HRESULT GetDisplayedImage(std::vector<BYTE>& dib, CString& errmsg);
-    HRESULT GetCurrentFrame(std::vector<BYTE>& dib, CString& errmsg);
-    HRESULT GetOriginalFrame(std::vector<BYTE>& dib, CString& errmsg);
-    HRESULT RenderCurrentSubtitles(BYTE* pData);
-    bool GetDIB(BYTE** ppData, long& size, bool fSilent = false);
-    BYTE* ConvertDIBTo24bppRGB(BYTE* pData, long size, int& outWidth, int& outHeight, int& outPitch);
-    void SaveDIB(LPCTSTR fn, BYTE* pData, long size);
-#if MPC_SMTC_VIDEO_THUMBNAIL
-    bool CaptureVideoThumbnail(std::vector<BYTE>& thumbnail);
-#endif
-    CString MakeSnapshotFileName(BOOL thumbnails);
-    BOOL IsRendererCompatibleWithSaveImage();
-    void SaveImage(LPCTSTR fn, bool displayed, bool includeSubtitles);
-    // False when no sheet was written, including the failures that report
-    // nothing at all. A headless /thumbnails run exits non-zero on it.
-    bool SaveThumbnails(LPCTSTR fn);
+    CSnapshot m_snapshot;
+    friend class CSnapshot; // until the graph and renderer pointers move out of the frame
 
     //
 
@@ -777,9 +763,11 @@ protected:
 
     CWnd* GetModalParent();
 
-    CCritSec lockModalDialog;
-    CMediaTypesDlg* mediaTypesErrorDlg;
-    RarEntrySelectorDialog* rarEntrySelectorDlg;
+    CCritSec lockModalDialog; // guards the two members below, never held across a modal loop
+    CDialog* openingModalDlg;
+    DWORD openingModalDlgThread;
+    INT_PTR DoOpeningModalDialog(CDialog& dlg);
+    void CloseOpeningModalDialog();
     void ShowMediaTypesDialog();
 
     void OpenCreateGraphObject(OpenMediaData* pOMD);
@@ -1044,6 +1032,7 @@ protected:  // control bar embedded members
     std::unique_ptr<CDebugShadersDlg> m_pDebugShaders;
     std::unique_ptr<CColorControlsDlg> m_pColorControls;
     std::unique_ptr<CHistoryDlg> m_pHistoryDlg;
+    std::unique_ptr<UpdateCheckerDlg> m_pUpdateCheckerDlg;
 
     LPCTSTR GetRecentFile() const;
 
@@ -1127,6 +1116,7 @@ public:
     afx_msg LRESULT OnFilePostOpenmedia(WPARAM wParam, LPARAM lparam);
     afx_msg LRESULT OnOpenMediaFailed(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnRunDeferredActions(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnUpdateCheckDone(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnUIRequest(WPARAM wParam, LPARAM lParam);
 
     // Only reached in headless scan mode: with the dialog running these go to
@@ -1173,12 +1163,6 @@ public:
     afx_msg void OnFileRecycle();
     afx_msg void OnFileSaveAs();
     afx_msg void OnUpdateFileSaveAs(CCmdUI* pCmdUI);
-    afx_msg void OnFileSaveImage();
-    afx_msg void OnFileSaveImageAuto();
-    afx_msg void OnUpdateFileSaveImage(CCmdUI* pCmdUI);
-    afx_msg void OnCmdLineSaveThumbnails();
-    afx_msg void OnFileSaveThumbnails();
-    afx_msg void OnUpdateFileSaveThumbnails(CCmdUI* pCmdUI);
     afx_msg void OnFileSubtitlesLoad();
     afx_msg void OnUpdateFileSubtitlesLoad(CCmdUI* pCmdUI);
     afx_msg void OnFileSubtitlesSave() { SubtitlesSave(); }
@@ -1507,8 +1491,6 @@ public:
     void        SendCurrentMuteToApi(bool force = false);
     void        ShowOSDCustomMessageApi(const MPC_OSDDATA* osdData);
     void        JumpOfNSeconds(int seconds);
-
-    CString GetVidPos() const;
 
     CComPtr<ITaskbarList3> m_pTaskbarList;
     HRESULT CreateThumbnailToolbar();

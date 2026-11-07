@@ -479,7 +479,9 @@ bool GetYDLStreamDetails(const Value& format, YDLStreamDetails& details, bool re
     bool canuse = true;
     details = { _T(""), _T(""), 0, 0, _T(""), _T(""), _T(""), false, false, 0, 0, 0, _T(""), _T(""), _T(""), 0, 0, 0, _T("") };
 
-    details.url = format[_T("url")].GetString();
+    if (format.HasMember(_T("url")) && format[_T("url")].IsString()) {
+        details.url = format[_T("url")].GetString();
+    }
     if (details.url.IsEmpty()) {
         #if YDL_TRACE
         YDL_LOG(_T("empty url\n"));
@@ -524,7 +526,7 @@ bool GetYDLStreamDetails(const Value& format, YDLStreamDetails& details, bool re
     if (format.HasMember(_T("language_preference")) && format[_T("language_preference")].IsInt()) {
         details.lang_pref = format[_T("language_preference")].GetInt();
     }
-    if (format.HasMember(_T("http_headers")) && format[_T("http_headers")].HasMember(_T("User-Agent"))) {
+    if (format.HasMember(_T("http_headers")) && format[_T("http_headers")].IsObject() && format[_T("http_headers")].HasMember(_T("User-Agent")) && format[_T("http_headers")][_T("User-Agent")].IsString()) {
         details.useragent = CString(format[_T("http_headers")][_T("User-Agent")].GetString());
     }
 
@@ -590,6 +592,17 @@ bool GetYDLStreamDetails(const Value& format, YDLStreamDetails& details, bool re
     }
     #endif
 
+    // guess missing width value
+    if (canuse && details.has_video && details.width == 0 && details.height >= 0) {
+        if (details.format_id.Find(L"portrait") >= 0) {
+            // swap if vertical video
+            details.width = details.height;
+            details.height = details.width * 16 / 9;
+        } else {
+            details.width = details.height * 16 / 9;
+        }
+    }
+
     return canuse;
 }
 
@@ -613,6 +626,15 @@ bool IsBetterYDLStream(YDLStreamDetails& first, YDLStreamDetails& second, int ma
             if (second.video_score > first.video_score) {
                 return true;
             }
+        }
+
+        // prefer landscape over portrait
+        if (first.height > first.width) {
+            if (second.height <= second.width) {
+                return true;
+            }
+        } else if (second.height > second.width) {
+            return false;
         }
 
         // Video resolution
@@ -801,7 +823,7 @@ bool CYoutubeDLInstance::GetHttpStreams(CAtlList<YDLStreamURL>& streams, YDLPlay
     YDLStreamDetails ydl_sd;
     YDLStreamURL stream;
 
-    if (pJSON->d.IsObject() && pJSON->d.HasMember(_T("extractor"))) {
+    if (pJSON->d.IsObject() && pJSON->d.HasMember(_T("extractor")) && pJSON->d[_T("extractor")].IsString()) {
         extractor = pJSON->d[_T("extractor")].GetString();
     } else {
         return false;
