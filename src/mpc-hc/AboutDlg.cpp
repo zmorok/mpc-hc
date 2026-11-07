@@ -246,12 +246,20 @@ BEGIN_MESSAGE_MAP(CAboutDlg, CMPCThemeDialog)
     // No message handlers
     //}}AFX_MSG_MAP
     ON_NOTIFY(NM_CLICK, IDC_HOMEPAGE_LINK, OnHomepage)
+    ON_NOTIFY(NM_CLICK, IDC_FORK_LINK, OnForkRepository)
+    ON_NOTIFY(NM_RETURN, IDC_FORK_LINK, OnForkRepository)
     ON_BN_CLICKED(IDC_BUTTON1, OnCopyToClipboard)
 END_MESSAGE_MAP()
 
 void CAboutDlg::OnHomepage(NMHDR* pNMHDR, LRESULT* pResult)
 {
     ShellExecute(m_hWnd, _T("open"), WEBSITE_URL, nullptr, nullptr, SW_SHOWDEFAULT);
+    *pResult = 0;
+}
+
+void CAboutDlg::OnForkRepository(NMHDR* pNMHDR, LRESULT* pResult)
+{
+    ShellExecute(m_hWnd, _T("open"), _T("https://github.com/zmorok/mpc-hc"), nullptr, nullptr, SW_SHOWDEFAULT);
     *pResult = 0;
 }
 

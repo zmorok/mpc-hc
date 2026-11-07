@@ -199,6 +199,10 @@ msgctxt "IDD_ABOUTBOX_CAPTION"
 msgid "About"
 msgstr ""
 
+msgctxt "IDD_ABOUTBOX_IDC_FORK_LINK"
+msgid "Modified by <a>zmorok (GitHub fork)</a>"
+msgstr ""
+
 msgctxt "IDD_ABOUTBOX_IDC_STATIC"
 msgid ""
 "This program is freeware and released under the GNU General Public License."

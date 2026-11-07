@@ -62,6 +62,7 @@ protected:
     //{{AFX_MSG(CAboutDlg)
     afx_msg void OnCopyToClipboard();
     afx_msg void OnHomepage(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnForkRepository(NMHDR* pNMHDR, LRESULT* pResult);
     //}}AFX_MSG
     DECLARE_MESSAGE_MAP()
 };
