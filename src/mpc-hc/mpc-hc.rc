@@ -1586,6 +1586,7 @@ BEGIN
         MENUITEM "&Close",                      ID_FILE_CLOSE_AND_RESTORE
         MENUITEM SEPARATOR
         MENUITEM "&Save a Copy...",             ID_FILE_SAVE_COPY
+        MENUITEM "Cop&y Frame to Clipboard",  ID_FILE_COPY_IMAGE
         MENUITEM "Save &Image...",              ID_FILE_SAVE_IMAGE
         MENUITEM "Save &Thumbnails...",         ID_FILE_SAVE_THUMBNAILS
         MENUITEM SEPARATOR
@@ -1864,6 +1865,7 @@ BEGIN
             MENUITEM "&Close",                      ID_FILE_CLOSE_AND_RESTORE
             MENUITEM SEPARATOR
             MENUITEM "&Save a Copy...",             ID_FILE_SAVE_COPY
+            MENUITEM "Cop&y Frame to Clipboard",  ID_FILE_COPY_IMAGE
             MENUITEM "Save &Image...",              ID_FILE_SAVE_IMAGE
             MENUITEM "Save &Thumbnails...",         ID_FILE_SAVE_THUMBNAILS
             MENUITEM SEPARATOR
@@ -2131,6 +2133,7 @@ BEGIN
             MENUITEM "&Close",                      ID_FILE_CLOSE_AND_RESTORE
             MENUITEM SEPARATOR
             MENUITEM "&Save a Copy...",             ID_FILE_SAVE_COPY
+            MENUITEM "Cop&y Frame to Clipboard",  ID_FILE_COPY_IMAGE
             MENUITEM "Save &Image...",              ID_FILE_SAVE_IMAGE
             MENUITEM "Save &Thumbnails...",         ID_FILE_SAVE_THUMBNAILS
             MENUITEM SEPARATOR
@@ -3219,9 +3222,12 @@ STRINGTABLE
 BEGIN
     IDS_AG_OPEN_DEVICE      "Open Device"
     IDS_AG_SAVE_AS          "Save As"
+    IDS_AG_COPY_IMAGE       "Copy Frame to Clipboard"
     IDS_AG_SAVE_IMAGE       "Save Image"
     IDS_MPLAYERC_6          "Save Image (auto)"
     IDS_OSD_IMAGE_SAVED     "Image saved successfully"
+    IDS_OSD_IMAGE_COPIED     "Frame copied to clipboard"
+    IDS_OSD_IMAGE_COPY_FAILED "Could not copy frame to clipboard"
     IDS_AG_LOAD_SUBTITLES   "Load Subtitles..."
     IDS_AG_SAVE_SUBTITLES   "Save Subtitles..."
     IDS_AG_PROPERTIES       "Properties"

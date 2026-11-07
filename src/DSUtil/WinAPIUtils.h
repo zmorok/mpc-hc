@@ -60,6 +60,7 @@ public:
     }
 
     BOOL SetText(const CString& text) const;
+    BOOL SetData(UINT format, const void* data, SIZE_T size) const;
 
 protected:
     BOOL m_bOpened;

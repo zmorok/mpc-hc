@@ -31,6 +31,7 @@ class CSnapshot : public CCmdTarget
     CMainFrame& m_frame;
 
     HRESULT RenderCurrentSubtitles(BYTE* pData);
+    HRESULT CaptureImage(std::vector<BYTE>& dib, CString& errmsg, bool displayed, bool includeSubtitles);
     CString MakeSnapshotFileName(BOOL thumbnails);
     BOOL IsRendererCompatibleWithSaveImage();
     CString GetVidPos() const;
@@ -53,6 +54,7 @@ public:
     bool SaveThumbnails(LPCTSTR fn);
 
     afx_msg void OnFileSaveImage();
+    afx_msg void OnFileCopyImage();
     afx_msg void OnFileSaveImageAuto();
     afx_msg void OnUpdateFileSaveImage(CCmdUI* pCmdUI);
     afx_msg void OnCmdLineSaveThumbnails();

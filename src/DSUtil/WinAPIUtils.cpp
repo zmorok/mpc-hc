@@ -328,32 +328,27 @@ BOOL CClipboard::SetText(const CString& text) const
 #else
     const UINT format = CF_TEXT;
 #endif
+    return SetData(format, text.GetString(), (static_cast<SIZE_T>(text.GetLength()) + 1) * sizeof(TCHAR));
+}
 
-    BOOL bResult = FALSE;
+BOOL CClipboard::SetData(UINT format, const void* data, SIZE_T size) const
+{
+    if (!m_bOpened || !data || !size) {
+        return FALSE;
+    }
 
-    if(m_bOpened) {
-        // Allocate a global memory object for the text
-        int len = text.GetLength() + 1;
-        auto hGlob = GlobalAlloc(GMEM_MOVEABLE, len*sizeof(TCHAR));
-        if (hGlob) {
-            // Lock the handle and copy the text to the buffer
-            auto pData = (LPTSTR)GlobalLock(hGlob);
-            if (pData) {
-                _tcscpy_s(pData, len, text.GetString());
-                GlobalUnlock(hGlob);
-
-                // Place the handle on the clipboard, if the call succeeds
-                // the system will take care of the allocated memory
-                if (::EmptyClipboard() && ::SetClipboardData(format, hGlob)) {
-                    bResult = TRUE;
-                    hGlob = nullptr;
-                }
-            }
-
-            if (hGlob) {
-                GlobalFree(hGlob);
-            }
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (!memory) {
+        return FALSE;
+    }
+    if (void* buffer = GlobalLock(memory)) {
+        memcpy(buffer, data, size);
+        GlobalUnlock(memory);
+        if (::EmptyClipboard() && ::SetClipboardData(format, memory)) {
+            // The clipboard owns memory after a successful transfer.
+            return TRUE;
         }
     }
-    return bResult;
+    GlobalFree(memory);
+    return FALSE;
 }

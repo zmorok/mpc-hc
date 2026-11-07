@@ -29,11 +29,14 @@
 #include "../Subtitles/RTS.h"
 #include <PathUtils.h>
 #include <DSUtil.h>
+#include <WinAPIUtils.h>
 #include <mvrInterfaces.h>
 #include "stb/deprecated/stb_image_resize2.h"
 #include "stb/stb_image_write.h"
 
 BEGIN_MESSAGE_MAP(CSnapshot, CCmdTarget)
+    ON_COMMAND(ID_FILE_COPY_IMAGE, OnFileCopyImage)
+    ON_UPDATE_COMMAND_UI(ID_FILE_COPY_IMAGE, OnUpdateFileSaveImage)
     ON_COMMAND(ID_FILE_SAVE_IMAGE, OnFileSaveImage)
     ON_UPDATE_COMMAND_UI(ID_FILE_SAVE_IMAGE, OnUpdateFileSaveImage)
     ON_COMMAND(ID_FILE_SAVE_IMAGE_AUTO, OnFileSaveImageAuto)
@@ -575,20 +578,22 @@ HRESULT CSnapshot::RenderCurrentSubtitles(BYTE* pData) {
     return hr;
 }
 
+HRESULT CSnapshot::CaptureImage(std::vector<BYTE>& dib, CString& errmsg, bool displayed, bool includeSubtitles)
+{
+    const HRESULT hr = displayed ? GetDisplayedImage(dib, errmsg) : GetCurrentFrame(dib, errmsg);
+    if (hr == S_OK && dib.size() < sizeof(BITMAPINFOHEADER)) {
+        return E_FAIL;
+    }
+    if (hr == S_OK && !displayed && includeSubtitles && m_frame.m_pCAP) {
+        RenderCurrentSubtitles(dib.data());
+    }
+    return hr;
+}
+
 void CSnapshot::SaveImage(LPCWSTR fn, bool displayed, bool includeSubtitles) {
     std::vector<BYTE> dib;
     CString errmsg;
-    HRESULT hr;
-    if (displayed) {
-        hr = GetDisplayedImage(dib, errmsg);
-    } else {
-        hr = GetCurrentFrame(dib, errmsg);
-        if (includeSubtitles && m_frame.m_pCAP && hr == S_OK) {
-            RenderCurrentSubtitles(dib.data());
-        }
-    }
-
-    if (hr == S_OK && !dib.empty()) {
+    if (CaptureImage(dib, errmsg, displayed, includeSubtitles) == S_OK) {
         SaveDIB(fn, dib.data(), (long)dib.size());
         m_frame.m_OSD.DisplayMessage(OSD_TOPLEFT, ResStr(IDS_OSD_IMAGE_SAVED), 3000);
     } else {
@@ -1059,6 +1064,29 @@ CString CSnapshot::GetVidPos() const
     }
 
     return posstr;
+}
+
+void CSnapshot::OnFileCopyImage()
+{
+    if (!IsRendererCompatibleWithSaveImage()) {
+        return;
+    }
+
+    const CAppSettings& s = AfxGetAppSettings();
+    const bool includeSubtitles = s.bSnapShotSubtitles && !m_frame.m_pMVRFG && s.fEnableSubtitles && s.IsISRAutoLoadEnabled();
+    std::vector<BYTE> dib;
+    CString errmsg;
+    const HRESULT hr = CaptureImage(dib, errmsg, false, includeSubtitles);
+    if (hr == E_ABORT && errmsg.IsEmpty()) {
+        return;
+    }
+
+    BOOL copied = FALSE;
+    if (hr == S_OK) {
+        CClipboard clipboard(&m_frame);
+        copied = clipboard.SetData(CF_DIB, dib.data(), dib.size());
+    }
+    m_frame.m_OSD.DisplayMessage(OSD_TOPLEFT, ResStr(copied ? IDS_OSD_IMAGE_COPIED : IDS_OSD_IMAGE_COPY_FAILED), 3000);
 }
 
 void CSnapshot::OnFileSaveImage()

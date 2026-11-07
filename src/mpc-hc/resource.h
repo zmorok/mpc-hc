@@ -95,6 +95,7 @@
 #define ID_FILE_SAVE_THUMBNAILS         808
 #define ID_FILE_SUBTITLES_LOAD          809
 #define ID_FILE_SUBTITLES_SAVE          810
+#define ID_FILE_COPY_IMAGE              811
 #define ID_FILE_SUBTITLES_DOWNLOAD      812
 #define ID_VIEW_ZOOM_25                 813
 #define ID_FILE_PROPERTIES              814
@@ -1906,6 +1907,9 @@
 #define IDS_MODERN_THEME_STYLE_WINDOWS10 58060
 #define IDS_MODERN_THEME_STYLE_WINDOWS11 58061
 #define IDS_PPAGEADVANCED_SUB_GLYPH_CACHE_MB 58062
+#define IDS_AG_COPY_IMAGE               58063
+#define IDS_OSD_IMAGE_COPIED            58064
+#define IDS_OSD_IMAGE_COPY_FAILED       58065
 
 // Next default values for new objects
 // 

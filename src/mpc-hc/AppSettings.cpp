@@ -596,13 +596,14 @@ static constexpr wmcmd_base default_wmcmds[] = {
     { ID_FILE_REOPEN,                     'E', FCONTROL,          IDS_AG_REOPEN },
     { ID_FILE_RECYCLE,              VK_DELETE, 0,                 IDS_FILE_RECYCLE },
     { ID_FILE_SAVE_COPY,                    0, 0,                 IDS_AG_SAVE_COPY },
+    { ID_FILE_COPY_IMAGE,                 'C', FCONTROL,          IDS_AG_COPY_IMAGE },
     { ID_FILE_SAVE_IMAGE,                 'I', FALT,              IDS_AG_SAVE_IMAGE },
-    { ID_FILE_SAVE_IMAGE_AUTO,          VK_F5, 0,                 IDS_MPLAYERC_6 },
+    { ID_FILE_SAVE_IMAGE_AUTO,              0, 0,                 IDS_MPLAYERC_6 },
     { ID_FILE_SAVE_THUMBNAILS,              0, 0,                 IDS_FILE_SAVE_THUMBNAILS },
     { ID_FILE_SUBTITLES_LOAD,             'L', FCONTROL,          IDS_AG_LOAD_SUBTITLES },
     { ID_FILE_SUBTITLES_SAVE,             'S', FCONTROL,          IDS_AG_SAVE_SUBTITLES },
     { ID_FILE_SUBTITLES_DOWNLOAD,         'D', 0,                 IDS_SUBTITLES_DOWNLOAD },
-    { ID_FILE_CLOSE_AND_RESTORE,          'C', FCONTROL,          IDS_AG_CLOSE },
+    { ID_FILE_CLOSE_AND_RESTORE,            0, 0,                 IDS_AG_CLOSE },
     { ID_FILE_PROPERTIES,              VK_F10, FSHIFT,            IDS_AG_PROPERTIES },
     { ID_FILE_OPEN_LOCATION,           VK_F10, FCONTROL | FSHIFT, IDS_AG_OPEN_FILE_LOCATION },
     { ID_RECENT_FILES_SHOW_HISTORY,        0, 0,                 IDS_PPAGEADVANCED_GRP_HISTORY },
@@ -1246,7 +1247,8 @@ void CAppSettings::SaveSettings(bool write_full_history /* = false */)
     POSITION pos = wmcmds.GetHeadPosition();
     for (int i = 0; pos;) {
         const wmcmd& wc = wmcmds.GetNext(pos);
-        if (wc.IsModified()) {
+        // Keep the copy command in the profile so legacy snapshot bindings are migrated only once.
+        if (wc.IsModified() || wc.cmd == ID_FILE_COPY_IMAGE) {
             CString str;
             str.Format(_T("CommandMod%d"), i);
             // mouse and mouseVirt are written twice for backwards compatibility with old versions
@@ -2074,6 +2076,10 @@ void CAppSettings::LoadSettings()
         m_pnspresets.Add(L"3D TB  > 2D,0.5,1.0,1.0,2.0");
     }
 
+    bool hasCopyImageBinding = false;
+    bool defaultCopyImageKeyInUse = false;
+    wmcmd* legacyClose = nullptr;
+    wmcmd* legacyAutoSave = nullptr;
     for (int i = 0; i < wmcmds.GetCount(); i++) {
         CString str2;
         str2.Format(_T("CommandMod%d"), i);
@@ -2112,6 +2118,35 @@ void CAppSettings::LoadSettings()
             }
             wc.rmcmd = tmp.rmcmd.Trim('\"');
             wc.rmrepcnt = tmp.rmrepcnt;
+
+            constexpr BYTE keyFlags = FVIRTKEY | FCONTROL | FSHIFT | FALT;
+            if (wc.cmd == ID_FILE_COPY_IMAGE) {
+                hasCopyImageBinding = true;
+            } else if (wc.key == 'C' && (wc.fVirt & keyFlags) == (FVIRTKEY | FCONTROL)) {
+                if (wc.cmd == ID_FILE_CLOSE_AND_RESTORE) {
+                    legacyClose = &wc;
+                } else {
+                    defaultCopyImageKeyInUse = true;
+                }
+            } else if (wc.cmd == ID_FILE_SAVE_IMAGE_AUTO && wc.key == VK_F5 && (wc.fVirt & keyFlags) == FVIRTKEY) {
+                legacyAutoSave = &wc;
+            }
+        }
+    }
+
+    if (!hasCopyImageBinding) {
+        // Older profiles can contain explicit entries even for default shortcuts.
+        if (legacyClose) {
+            legacyClose->key = 0;
+            legacyClose->fVirt &= ~FCONTROL;
+        }
+        if (legacyAutoSave) {
+            legacyAutoSave->key = 0;
+        }
+        if (defaultCopyImageKeyInUse) {
+            wmcmd copyImage;
+            copyImage.cmd = ID_FILE_COPY_IMAGE;
+            wmcmds.GetAt(wmcmds.Find(copyImage)).key = 0;
         }
     }
 

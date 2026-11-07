@@ -53,6 +53,10 @@ msgctxt "ID_FILE_SAVE_COPY"
 msgid "&Save a Copy..."
 msgstr ""
 
+msgctxt "ID_FILE_COPY_IMAGE"
+msgid "Cop&y Frame to Clipboard"
+msgstr ""
+
 msgctxt "ID_FILE_SAVE_IMAGE"
 msgid "Save &Image..."
 msgstr ""
