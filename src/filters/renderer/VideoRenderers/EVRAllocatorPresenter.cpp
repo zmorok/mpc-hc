@@ -644,6 +644,7 @@ STDMETHODIMP CEVRAllocatorPresenter::ProcessMessage(MFVP_MESSAGE_TYPE eMessage, 
             break;
 
         case MFVP_MESSAGE_FLUSH:                    // The presenter should discard any pending samples
+            ResetEVRMixerReady();
             m_bEvtFlush = true;
             SetEvent(m_hEvtFlush);
             TRACE_EVR("EVR: MFVP_MESSAGE_FLUSH\n");
@@ -1306,7 +1307,7 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
 
         if (SUCCEEDED(TrackSample(pSample))) {
             AddToScheduledList(pSample, false);
-            if (m_bHookedReceive) {
+            if (m_bHookedReceive && !m_bEvtFlush) {
                 MarkEVRMixerReady();
             }
             pSample = nullptr; // The sample should not be used after being queued

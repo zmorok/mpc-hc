@@ -146,6 +146,7 @@ static HRESULT STDMETHODCALLTYPE NewSegmentMine(IPinC* This, /* [in] */ REFERENC
     if (g_pPinC_NewSegment == This) {
         g_tSegmentStart = tStart;
         g_dRate = dRate;
+        ResetEVRMixerReady();
     }
 
     return NewSegmentOrg(This, tStart, tStop, dRate);
@@ -197,6 +198,9 @@ static void SetNativeSampleFlushing(bool flushing)
 {
     CAutoLock lock(&g_nativeSampleLock);
     g_nativeSampleFlushing = flushing;
+    if (flushing) {
+        g_evrMixerReady = false;
+    }
     g_nativeSampleChanged.SetEvent();
 }
 
@@ -216,6 +220,12 @@ void MarkEVRMixerReady()
 {
     CAutoLock lock(&g_nativeSampleLock);
     g_evrMixerReady = true;
+}
+
+void ResetEVRMixerReady()
+{
+    CAutoLock lock(&g_nativeSampleLock);
+    g_evrMixerReady = false;
 }
 
 void SetNativeSampleDeadline(REFERENCE_TIME time, UINT repaintIntervalMs)

@@ -77,6 +77,7 @@ extern bool HookReceive(IMemInputPinC* pMemInputPin, bool retainNativeSamples = 
 extern bool HasNativeSamples();
 extern bool IsEVRMixerReady();
 extern void MarkEVRMixerReady();
+extern void ResetEVRMixerReady();
 extern void SetNativeSampleDeadline(REFERENCE_TIME time, UINT repaintIntervalMs = 0);
 extern bool MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime);
 extern void ReleaseNativeSamplesBefore(REFERENCE_TIME sampleTime);

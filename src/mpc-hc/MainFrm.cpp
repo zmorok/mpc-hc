@@ -3080,6 +3080,9 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
                     m_bResumeAfterSeek = false;
                     KillTimer(TIMER_SEEKRESUME);
                     MediaControlRun(false, false);
+#if MPC_SMTC_VIDEO_THUMBNAIL
+                    MediaTransportControlUpdateThumbnail();
+#endif
                 }
             } else {
                 KillTimer(TIMER_SEEKRESUME);
@@ -19710,7 +19713,9 @@ void CMainFrame::DoSeekTo(REFERENCE_TIME rtPos, bool bShowOSD /*= true*/)
         // Update media transport controls timeline after seek
         MediaTransportControlUpdateTimeline(true);
 #if MPC_SMTC_VIDEO_THUMBNAIL
-        MediaTransportControlUpdateThumbnail();
+        if (!m_bResumeAfterSeek) {
+            MediaTransportControlUpdateThumbnail();
+        }
 #endif
     }
 
