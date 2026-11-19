@@ -1182,6 +1182,9 @@ LRESULT CPlayerSeekBar::OnThemeChanged()
     m_pEnabledThumb = nullptr;
     m_pDisabledThumb = nullptr;
     m_timeFont.DeleteObject();
+    m_timeTextNeedsMeasure = true;
+    UpdateTime();
+    Invalidate();
     return __super::OnThemeChanged();
 }
 

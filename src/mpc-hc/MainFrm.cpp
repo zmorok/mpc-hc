@@ -25014,17 +25014,16 @@ void CMainFrame::MediaTransportControlUpdateTimeline(bool force /*= false*/) {
             || IsPlaybackCaptureMode() || !m_media_trans_control.IsActive()) {
         return;
     }
-    m_lastSMTCTimelineUpdate = tick;
-
     __int64 start = 0, stop = 0;
     m_wndSeekBar.GetRange(start, stop);
     if (stop > 0) {
+        m_lastSMTCTimelineUpdate = tick;
         m_media_trans_control.UpdateTimelineProperties(0, stop, m_wndSeekBar.GetPos());
     }
 
 #if MPC_SMTC_VIDEO_THUMBNAIL
     // Periodic thumbnail refresh, driven from the same throttled path
-    if (m_nextSMTCThumbnailUpdate && tick >= m_nextSMTCThumbnailUpdate && GetMediaState() == State_Running) {
+    if (!force && !m_bResumeAfterSeek && m_nextSMTCThumbnailUpdate && tick >= m_nextSMTCThumbnailUpdate && GetMediaState() == State_Running) {
         MediaTransportControlUpdateThumbnail();
     }
 #endif
