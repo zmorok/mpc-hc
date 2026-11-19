@@ -563,6 +563,14 @@ BOOL CMouse::InternalOnMouseWheel(UINT nFlags, short zDelta, const CPoint& point
 {
     m_bWaitingRButtonUp = false;
     if ((nFlags & MK_CONTROL) && m_pMainFrame->HandleInteractiveVideoZoom(GetWnd(), point, zDelta)) {
+        if (m_bVideoPan) {
+            m_bVideoPan = false;
+            m_bVideoPanMoved = false;
+            if (::GetCapture() == GetWnd().m_hWnd) {
+                ReleaseCapture();
+            }
+            m_cursor = Cursor::ARROW;
+        }
         return TRUE;
     }
 
@@ -756,6 +764,16 @@ void CMouse::InternalOnMouseLeave()
     }
 }
 
+void CMouse::InternalOnCaptureChanged(CWnd* pWnd)
+{
+    if (m_bVideoPan && pWnd != &GetWnd()) {
+        m_pMainFrame->EndInteractiveVideoPan();
+        m_bVideoPan = false;
+        m_bVideoPanMoved = false;
+        m_cursor = Cursor::ARROW;
+    }
+}
+
 void CMouse::InternalOnDestroy()
 {
     ResetToBlankState();
@@ -785,6 +803,7 @@ BEGIN_MESSAGE_MAP(CMouseWnd, CWnd)
     ON_WM_SETCURSOR()
     ON_WM_MOUSEMOVE()
     ON_WM_MOUSELEAVE()
+    ON_WM_CAPTURECHANGED()
     ON_WM_DESTROY()
 END_MESSAGE_MAP()
 
@@ -873,6 +892,12 @@ void CMouseWnd::OnMouseLeave()
 {
     CMouse::InternalOnMouseLeave();
     CWnd::OnMouseLeave();
+}
+
+void CMouseWnd::OnCaptureChanged(CWnd* pWnd)
+{
+    CMouse::InternalOnCaptureChanged(pWnd);
+    CWnd::OnCaptureChanged(pWnd);
 }
 
 void CMouseWnd::OnDestroy()

@@ -130,6 +130,7 @@ protected:
     BOOL InternalOnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
     void InternalOnMouseMove(UINT nFlags, const CPoint& point);
     void InternalOnMouseLeave();
+    void InternalOnCaptureChanged(CWnd* pWnd);
     void InternalOnDestroy();
 public:
     BOOL OnMouseHWheelImpl(UINT nFlags, short zDelta, const CPoint& point);
@@ -168,6 +169,8 @@ private:
     void OnMouseMove(UINT nFlags, CPoint point);
 
     void OnMouseLeave();
+
+    void OnCaptureChanged(CWnd* pWnd);
 
     void OnDestroy();
 

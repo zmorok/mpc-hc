@@ -752,6 +752,8 @@ protected:
     double m_dInteractiveVideoLeftTarget = 0.0;
     double m_dInteractiveVideoTopTarget = 0.0;
     bool m_bInteractiveVideoPanning = false;
+    double m_dInteractiveVideoPanLeft = 0.0;
+    double m_dInteractiveVideoPanTop = 0.0;
     int m_AngleX, m_AngleY, m_AngleZ;
     int m_iDefRotation;
 

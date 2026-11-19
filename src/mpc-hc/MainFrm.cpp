@@ -12947,14 +12947,24 @@ bool CMainFrame::HandleInteractiveVideoZoom(CWnd& sourceWnd, const CPoint& scree
     const double targetZoom = std::clamp(baseTarget * std::pow(zoomPerWheelStep,
                                                 static_cast<double>(zDelta) / WHEEL_DELTA), minZoom, maxZoom);
 
+    if (m_bInteractiveVideoPanning) {
+        EndInteractiveVideoPan();
+    }
+
     const bool animationWasActive = m_bInteractiveVideoZoomAnimating;
     const double sourceZoom = animationWasActive ? m_dInteractiveVideoZoomTarget : std::max(m_ZoomX, m_ZoomY);
+    const double currentWidth = m_dInteractiveVideoBaseWidth * m_ZoomX > 0.0
+            ? m_dInteractiveVideoBaseWidth * m_ZoomX
+            : m_interactiveVideoRect.Width();
+    const double currentHeight = m_dInteractiveVideoBaseHeight * m_ZoomY > 0.0
+            ? m_dInteractiveVideoBaseHeight * m_ZoomY
+            : m_interactiveVideoRect.Height();
     const double sourceWidth = animationWasActive
             ? m_dInteractiveVideoBaseWidth * sourceZoom
-            : m_interactiveVideoRect.Width();
+            : currentWidth;
     const double sourceHeight = animationWasActive
             ? m_dInteractiveVideoBaseHeight * sourceZoom
-            : m_interactiveVideoRect.Height();
+            : currentHeight;
     const double sourceLeft = animationWasActive ? m_dInteractiveVideoLeftTarget : m_interactiveVideoRect.left;
     const double sourceTop = animationWasActive ? m_dInteractiveVideoTopTarget : m_interactiveVideoRect.top;
     if (sourceWidth <= 0.0 || sourceHeight <= 0.0) {
@@ -13003,6 +13013,14 @@ bool CMainFrame::BeginInteractiveVideoPan(CWnd& sourceWnd, const CPoint& clientP
     }
 
     StopInteractiveVideoZoomAnimation();
+    const double width = m_dInteractiveVideoBaseWidth * m_ZoomX > 0.0
+            ? m_dInteractiveVideoBaseWidth * m_ZoomX
+            : m_interactiveVideoRect.Width();
+    const double height = m_dInteractiveVideoBaseHeight * m_ZoomY > 0.0
+            ? m_dInteractiveVideoBaseHeight * m_ZoomY
+            : m_interactiveVideoRect.Height();
+    InteractiveVideoPositionToOrigin(width, height, m_PosX, m_PosY,
+                                     m_dInteractiveVideoPanLeft, m_dInteractiveVideoPanTop);
     m_bInteractiveVideoPanning = true;
     return true;
 }
@@ -13013,12 +13031,16 @@ void CMainFrame::UpdateInteractiveVideoPan(CWnd& sourceWnd, const CSize& delta)
         return;
     }
 
-    const double width = m_interactiveVideoRect.Width();
-    const double height = m_interactiveVideoRect.Height();
-    double left = m_interactiveVideoRect.left + delta.cx;
-    double top = m_interactiveVideoRect.top + delta.cy;
-    ClampInteractiveVideoOrigin(width, height, left, top);
-    InteractiveVideoOriginToPosition(width, height, left, top, m_PosX, m_PosY);
+    const double width = m_dInteractiveVideoBaseWidth * m_ZoomX > 0.0
+            ? m_dInteractiveVideoBaseWidth * m_ZoomX
+            : m_interactiveVideoRect.Width();
+    const double height = m_dInteractiveVideoBaseHeight * m_ZoomY > 0.0
+            ? m_dInteractiveVideoBaseHeight * m_ZoomY
+            : m_interactiveVideoRect.Height();
+    m_dInteractiveVideoPanLeft += delta.cx;
+    m_dInteractiveVideoPanTop += delta.cy;
+    ClampInteractiveVideoOrigin(width, height, m_dInteractiveVideoPanLeft, m_dInteractiveVideoPanTop);
+    InteractiveVideoOriginToPosition(width, height, m_dInteractiveVideoPanLeft, m_dInteractiveVideoPanTop, m_PosX, m_PosY);
     MoveVideoWindow();
 }
 
@@ -13167,10 +13189,35 @@ void CMainFrame::MoveVideoWindow(bool fShowStats/* = false*/, bool bSetStoppedVi
             ASSERT(videoRect.Height() == lround(dScaledVRHeight));
 
             if ((fs == State_Running || fs == State_Paused) && m_pVideoWnd) {
+                const bool geometryChanged = m_interactiveVideoViewportRect != windowRect
+                    || std::abs(m_dInteractiveVideoBaseWidth - dVRWidth) > 0.5
+                    || std::abs(m_dInteractiveVideoBaseHeight - dVRHeight) > 0.5;
+                double targetPosX = m_PosX;
+                double targetPosY = m_PosY;
+                const bool rebaseAnimation = m_bInteractiveVideoZoomAnimating && geometryChanged
+                    && m_dInteractiveVideoBaseWidth > 0.0 && m_dInteractiveVideoBaseHeight > 0.0;
+                if (rebaseAnimation) {
+                    InteractiveVideoOriginToPosition(
+                        m_dInteractiveVideoBaseWidth * m_dInteractiveVideoZoomTarget,
+                        m_dInteractiveVideoBaseHeight * m_dInteractiveVideoZoomTarget,
+                        m_dInteractiveVideoLeftTarget, m_dInteractiveVideoTopTarget, targetPosX, targetPosY);
+                }
                 m_interactiveVideoViewportRect = windowRect;
                 m_interactiveVideoRect = videoRect;
                 m_dInteractiveVideoBaseWidth = dVRWidth;
                 m_dInteractiveVideoBaseHeight = dVRHeight;
+                if (rebaseAnimation) {
+                    InteractiveVideoPositionToOrigin(
+                        dVRWidth * m_ZoomX, dVRHeight * m_ZoomY,
+                        m_PosX, m_PosY, m_dInteractiveVideoLeft, m_dInteractiveVideoTop);
+                    const double newTargetW = dVRWidth * m_dInteractiveVideoZoomTarget;
+                    const double newTargetH = dVRHeight * m_dInteractiveVideoZoomTarget;
+                    InteractiveVideoPositionToOrigin(
+                        newTargetW, newTargetH, targetPosX, targetPosY,
+                        m_dInteractiveVideoLeftTarget, m_dInteractiveVideoTopTarget);
+                    ClampInteractiveVideoOrigin(newTargetW, newTargetH,
+                                                m_dInteractiveVideoLeftTarget, m_dInteractiveVideoTopTarget);
+                }
                 m_bInteractiveVideoTransformReady = true;
             }
 
