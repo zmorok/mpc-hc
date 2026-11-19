@@ -3014,7 +3014,7 @@ void CMainFrame::OnTimer(UINT_PTR nIDEvent)
 
                     m_wndInfoBar.SetLine(StrRes(IDS_INFOBAR_SUBTITLES), Subtitles);
                 }
-            } else if (GetPlaybackMode() == PM_DIGITAL_CAPTURE) {
+            } else if (GetPlaybackMode() == PM_DIGITAL_CAPTURE && m_wndStatsBar.IsVisible()) {
                 if (m_pDVBState->bActive) {
                     CComQIPtr<IBDATuner> pTun = m_pGB;
                     BOOLEAN bPresent, bLocked;
@@ -7876,11 +7876,16 @@ void CMainFrame::OnViewControlBar(UINT nID)
 
     nID -= ID_VIEW_SEEKER;
     const auto toolbar = static_cast<CMainFrameControls::Toolbar>(nID);
+    const bool showStats = toolbar == CMainFrameControls::Toolbar::STATS
+        && !m_controls.ControlChecked(toolbar);
     // Populate before ToggleControl calculates the newly visible bar's height.
-    if (toolbar == CMainFrameControls::Toolbar::STATS && !m_controls.ControlChecked(toolbar)) {
+    if (showStats) {
         OpenSetupStatsBar(true);
     }
     m_controls.ToggleControl(toolbar);
+    if (showStats && GetLoadState() == MLS::LOADED) {
+        OnTimer(TIMER_STATS);
+    }
 }
 
 void CMainFrame::OnUpdateViewControlBar(CCmdUI* pCmdUI)
@@ -15854,6 +15859,9 @@ void CMainFrame::OpenSetupStatsBar(bool force /*= false*/)
         if (bFoundIBitRateInfo) {
             m_wndStatsBar.SetLine(StrRes(IDS_STATSBAR_BITRATE), info);
         }
+        if (m_wndStatsBar.IsVisible()) {
+            OnTimer(TIMER_STATS);
+        }
     }
 }
 
@@ -20039,6 +20047,7 @@ bool CMainFrame::BuildGraphVideoAudio(int fVPreview, bool fVCapture, int fAPrevi
         m_pMFVP.Release();
         m_pMFVDC.Release();
         m_pQP.Release();
+        m_pBI.Release();
     }
 
     m_pGB->NukeDownstream(m_pVidCap);
