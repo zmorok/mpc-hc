@@ -155,7 +155,7 @@ void CPlayerSeekBar::MoveThumb(const CPoint& point)
         REFERENCE_TIME rtPos = rtPosDraw;
         const CAppSettings& s = AfxGetAppSettings();
         REFERENCE_TIME duration = m_rtStop - m_rtStart;
-        if (duration >= 600000000LL && s.bFastSeek && (GetKeyState(VK_SHIFT) >= 0)) {
+        if ((duration >= 600000000LL || s.bAllowInaccurateFastseek) && s.bFastSeek && (GetKeyState(VK_SHIFT) >= 0)) {
             REFERENCE_TIME rtMaxDiff = s.bAllowInaccurateFastseek ? 200000000LL : std::min(100000000LL, duration / 30);
             rtPos = m_pMainFrame->GetClosestKeyFrame(rtPos, rtMaxDiff, rtMaxDiff);
         }
@@ -185,6 +185,7 @@ void CPlayerSeekBar::CheckScrollDistance(CPoint point, REFERENCE_TIME minimum_du
             m_pMainFrame->MediaControlPause();
         }
 
+        m_rtLastDragSeekPos = m_rtPos;
         SyncVideoToThumb();
     }
 }
@@ -1002,6 +1003,7 @@ void CPlayerSeekBar::OnLButtonDown(UINT nFlags, CPoint point)
         pausedForScrolling = false;
         SetCapture();
         m_bDraggingThumb = true;
+        m_rtLastDragSeekPos = -1;
         MoveThumb(point);
         CheckScrollDistance(point, 0ULL, 0LL);
         invalidateThumb();
@@ -1022,7 +1024,9 @@ void CPlayerSeekBar::OnLButtonUp(UINT nFlags, CPoint point)
 {
     if (DraggingThumb()) {
         MoveThumb(point);
-        const bool finalPositionChanged = m_rtPosDraw != m_rtHoverPos;
+        const bool pointerMovedPastJitter = std::abs(point.x - m_hoverPoint.x) > 1
+            || GetTickCount64() - m_lastDragSeekTickCount >= 150;
+        const bool finalPositionChanged = m_rtPos != m_rtLastDragSeekPos && pointerMovedPastJitter;
         const bool resume = pausedForScrolling;
         // ReleaseCapture sends OnCaptureChanged synchronously. Finish the final
         // seek ourselves before that handler can resume the old position.

@@ -48,6 +48,7 @@ private:
     bool m_bEnabled;
     bool m_bHasDuration;
     REFERENCE_TIME m_rtHoverPos;
+    REFERENCE_TIME m_rtLastDragSeekPos = -1;
     CPoint m_hoverPoint;
     HCURSOR m_cursor;
     bool m_bDraggingThumb, m_bHoverThumb;
