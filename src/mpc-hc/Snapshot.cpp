@@ -580,11 +580,20 @@ HRESULT CSnapshot::RenderCurrentSubtitles(BYTE* pData) {
 
 HRESULT CSnapshot::CaptureImage(std::vector<BYTE>& dib, CString& errmsg, bool displayed, bool includeSubtitles)
 {
-    const HRESULT hr = displayed ? GetDisplayedImage(dib, errmsg) : GetCurrentFrame(dib, errmsg);
+    bool capturedDisplayed = displayed;
+    HRESULT hr = displayed ? GetDisplayedImage(dib, errmsg) : GetOriginalFrame(dib, errmsg);
+    if (!displayed && hr != S_OK && hr != E_ABORT) {
+        CString fallbackErrmsg;
+        if (GetDisplayedImage(dib, fallbackErrmsg) == S_OK) {
+            hr = S_OK;
+            errmsg.Empty();
+            capturedDisplayed = true;
+        }
+    }
     if (hr == S_OK && dib.size() < sizeof(BITMAPINFOHEADER)) {
         return E_FAIL;
     }
-    if (hr == S_OK && !displayed && includeSubtitles && m_frame.m_pCAP) {
+    if (hr == S_OK && !capturedDisplayed && includeSubtitles && m_frame.m_pCAP) {
         RenderCurrentSubtitles(dib.data());
     }
     return hr;

@@ -2121,7 +2121,13 @@ void CAppSettings::LoadSettings()
 
             constexpr BYTE keyFlags = FVIRTKEY | FCONTROL | FSHIFT | FALT;
             if (wc.cmd == ID_FILE_COPY_IMAGE) {
-                hasCopyImageBinding = true;
+                if (wc.key == 0 && (wc.fVirt & FCONTROL)) {
+                    // Repair legacy conflict entries that cleared the key without clearing FCONTROL.
+                    wc.key = 'C';
+                    wc.fVirt = FVIRTKEY | FCONTROL;
+                } else {
+                    hasCopyImageBinding = true;
+                }
             } else if (wc.key == 'C' && (wc.fVirt & keyFlags) == (FVIRTKEY | FCONTROL)) {
                 if (wc.cmd == ID_FILE_CLOSE_AND_RESTORE) {
                     legacyClose = &wc;
@@ -2143,10 +2149,17 @@ void CAppSettings::LoadSettings()
         if (legacyAutoSave) {
             legacyAutoSave->key = 0;
         }
-        if (defaultCopyImageKeyInUse) {
-            wmcmd copyImage;
-            copyImage.cmd = ID_FILE_COPY_IMAGE;
-            wmcmds.GetAt(wmcmds.Find(copyImage)).key = 0;
+        wmcmd copyImage;
+        copyImage.cmd = ID_FILE_COPY_IMAGE;
+        if (POSITION copyPos = wmcmds.Find(copyImage)) {
+            wmcmd& copyCmd = wmcmds.GetAt(copyPos);
+            if (defaultCopyImageKeyInUse) {
+                copyCmd.key = 0;
+                copyCmd.fVirt &= ~FCONTROL;
+            } else {
+                copyCmd.key = 'C';
+                copyCmd.fVirt = FVIRTKEY | FCONTROL;
+            }
         }
     }
 
