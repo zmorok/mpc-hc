@@ -399,6 +399,8 @@ private:
     CRect m_lastWindowRect;
     CRect m_videoOpenWindowRect;
     bool m_bVideoOpenWindowRectValid = false;
+    UINT m_nFullscreenVideoFrameID = ID_VIEW_VF_FROMINSIDE;
+    bool m_bFullscreenVideoFrameOverride = false;
 
     void ToggleFullscreenWithVideoFrame(UINT nVideoFrameID);
     void ApplyVideoFrameMode(UINT nVideoFrameID);

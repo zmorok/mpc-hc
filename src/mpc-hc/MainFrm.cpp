@@ -1676,8 +1676,12 @@ BOOL CMainFrame::PreTranslateMessage(MSG* pMsg)
         const bool alt   = (::GetKeyState(VK_MENU)    & 0x8000) != 0;
         const bool shift = (::GetKeyState(VK_SHIFT)   & 0x8000) != 0;
 
-        // Prevent repeated toggling while Enter is held.
-        if (!alt && !shift) {
+        const LRESULT dlgCode = pMsg->hwnd
+            ? ::SendMessage(pMsg->hwnd, WM_GETDLGCODE, VK_RETURN, reinterpret_cast<LPARAM>(pMsg))
+            : 0;
+
+        // Prevent repeated toggling while Enter is held, and leave Return to controls that explicitly claim it.
+        if (!alt && !shift && !(dlgCode & (DLGC_WANTMESSAGE | DLGC_WANTALLKEYS))) {
             if ((pMsg->lParam & 0x40000000) == 0) {
                 ToggleFullscreenWithVideoFrame(
                     ctrl ? ID_VIEW_VF_STRETCH : ID_VIEW_VF_FROMINSIDE
@@ -1747,6 +1751,10 @@ BOOL CMainFrame::PreTranslateMessage(MSG* pMsg)
 
 void CMainFrame::ApplyVideoFrameMode(UINT nVideoFrameID)
 {
+    StopInteractiveVideoZoomAnimation();
+    AfxGetAppSettings().iDefaultVideoSize = nVideoFrameID - ID_VIEW_VF_HALF;
+    m_ZoomX = m_ZoomY = 1;
+    m_PosX = m_PosY = 0.5;
     if (GetLoadState() == MLS::LOADED && !m_fAudioOnly) {
         OnViewDefaultVideoFrame(nVideoFrameID);
     }
@@ -1799,11 +1807,14 @@ void CMainFrame::ToggleFullscreenWithVideoFrame(UINT nVideoFrameID)
     if (!bWasFullScreen) {
         // Save the current window position before entering fullscreen.
         SaveVideoOpenWindowRect();
+        m_nFullscreenVideoFrameID = nVideoFrameID;
+        m_bFullscreenVideoFrameOverride = true;
 
         ToggleFullscreen(true, false);
         ApplyVideoFrameMode(nVideoFrameID);
     } else {
         // Restore "Fit frame" mode and the original window position.
+        m_bFullscreenVideoFrameOverride = false;
         ApplyVideoFrameMode(ID_VIEW_VF_FROMINSIDE);
 
         ToggleFullscreen(true, false);
@@ -4833,6 +4844,9 @@ LRESULT CMainFrame::OnFilePostOpenmedia(WPARAM wParam, LPARAM lParam)
         m_bVideoOpenWindowRectValid = false;
         SaveVideoOpenWindowRect();
         OnViewFullscreen();
+    }
+    if (IsFullScreenMode() && m_bFullscreenVideoFrameOverride) {
+        ApplyVideoFrameMode(m_nFullscreenVideoFrameID);
     }
 
     // Add temporary flag to allow EC_VIDEO_SIZE_CHANGED event to stabilize window size
@@ -12412,6 +12426,10 @@ void CMainFrame::ToggleFullscreen(bool fToNearest, bool fSwitchScreenResWhenHasT
                 }
             }
         }
+        if (!m_fFullScreen && m_bFullscreenVideoFrameOverride) {
+            m_bFullscreenVideoFrameOverride = false;
+            ApplyVideoFrameMode(ID_VIEW_VF_FROMINSIDE);
+        }
         MoveVideoWindow();
 
         if (s.bHideWindowedControls) {
@@ -12525,7 +12543,13 @@ void CMainFrame::ToggleFullscreen(bool fToNearest, bool fSwitchScreenResWhenHasT
         if (bZoomVideoWindow) {
             ZoomVideoWindow();
         }
-        MoveVideoWindow();
+        if (!m_fFullScreen && m_bFullscreenVideoFrameOverride) {
+            m_bFullscreenVideoFrameOverride = false;
+            ApplyVideoFrameMode(ID_VIEW_VF_FROMINSIDE);
+            RestoreVideoOpenWindowRect();
+        } else {
+            MoveVideoWindow();
+        }
     }
 
     if (restart_osd) {
