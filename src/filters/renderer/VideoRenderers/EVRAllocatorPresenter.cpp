@@ -221,10 +221,10 @@ void CEVRAllocatorPresenter::StartWorkerThreads()
 void CEVRAllocatorPresenter::StopWorkerThreads()
 {
     if (m_nRenderState != Shutdown) {
-        SetEvent(m_hEvtFlush);
         m_bEvtFlush = true;
-        SetEvent(m_hEvtQuit);
+        SetEvent(m_hEvtFlush);
         m_bEvtQuit = true;
+        SetEvent(m_hEvtQuit);
         if (m_hThread && WaitForSingleObject(m_hThread, 10000) == WAIT_TIMEOUT) {
             ASSERT(FALSE);
             TerminateThread(m_hThread, 0xDEAD);
@@ -414,7 +414,9 @@ STDMETHODIMP CEVRAllocatorPresenter::OnClockPause(MFTIME hnsSystemTime)
     CHECK_HR(CheckShutdown());
 
     TRACE_EVR("EVR: OnClockPause  hnsSystemTime = %I64d\n", hnsSystemTime);
-    m_nRenderState = Paused;
+    if (!m_bSignaledStarvation) {
+        m_nRenderState = Paused;
+    }
     if (m_bHookedReceive) {
         SetNativeSampleDeadline(-1);
     }
@@ -451,7 +453,8 @@ bool CEVRAllocatorPresenter::GetState(DWORD dwMilliSecsTimeout, FILTER_STATE* St
 
     if (m_bSignaledStarvation && !m_bEndOfStream) {
         size_t nSamples = std::max(m_nNbDXSurface / 2, 1);
-        if ((m_ScheduledSamples.GetCount() < nSamples
+        if (!m_bEvtFlush && GetTickCount64() - m_llStarvationTick < 250
+                && (m_ScheduledSamples.GetCount() < nSamples
                 || (m_nRenderState == Started && m_LastSampleOffset < -m_rtTimePerFrame * 2)) && !g_bNoDuration) {
             *State = (FILTER_STATE)Paused;
             _ReturnValue = VFW_S_STATE_INTERMEDIATE;
@@ -641,8 +644,8 @@ STDMETHODIMP CEVRAllocatorPresenter::ProcessMessage(MFVP_MESSAGE_TYPE eMessage, 
             break;
 
         case MFVP_MESSAGE_FLUSH:                    // The presenter should discard any pending samples
-            SetEvent(m_hEvtFlush);
             m_bEvtFlush = true;
+            SetEvent(m_hEvtFlush);
             TRACE_EVR("EVR: MFVP_MESSAGE_FLUSH\n");
             while (WaitForSingleObject(m_hEvtFlush, 1) == WAIT_OBJECT_0) {
                 ;
@@ -1172,7 +1175,7 @@ HRESULT CEVRAllocatorPresenter::CompleteNativeReads(bool wait)
 
 bool CEVRAllocatorPresenter::GetImageFromMixer()
 {
-    if (FAILED(CompleteNativeReads(false))) {
+    if (m_bEvtFlush || FAILED(CompleteNativeReads(false))) {
         return false;
     }
     MFT_OUTPUT_DATA_BUFFER dataBuffer;
@@ -1194,11 +1197,17 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
     while (SUCCEEDED(hr)) {
         // Bound outstanding reads by the presenter's existing surface pool.
         if (m_NativeReads.GetCount() >= m_nNbDXSurface) {
+            if (m_bHookedReceive && m_nRenderState != Started && HasNativeSamples()) {
+                MarkNativeSamplesProcessed(MAXLONGLONG);
+            }
             break;
         }
         CComPtr<IMFSample> pSample;
 
         if (FAILED(GetFreeSample(&pSample))) {
+            if (m_bHookedReceive && m_nRenderState != Started && HasNativeSamples()) {
+                MarkNativeSamplesProcessed(MAXLONGLONG);
+            }
             break;
         }
 
@@ -1225,7 +1234,10 @@ bool CEVRAllocatorPresenter::GetImageFromMixer()
             if (m_bHookedReceive && HasNativeSamples()) {
                 if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
                     m_bPendingRenegotiate = true;
-                } else if (hr != MF_E_TRANSFORM_NEED_MORE_INPUT && hr != MF_E_TRANSFORM_TYPE_NOT_SET) {
+                    MarkNativeSamplesProcessed(MAXLONGLONG);
+                } else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT || hr == MF_E_TRANSFORM_TYPE_NOT_SET) {
+                    MarkNativeSamplesProcessed(MAXLONGLONG);
+                } else {
                     // A fatal mixer error must also wake the input's Receive.
                     m_bNativeReadFailed = true;
                     FailNativeSamples(hr);
@@ -2639,6 +2651,7 @@ void CEVRAllocatorPresenter::RenderThread()
                                 && m_nRenderState == Started && !g_bNoDuration) {
                             // Keep the live clock for bounded native frame dropping;
                             // freezing it would disable catch-up and prolong EOF drain.
+                            m_llStarvationTick = GetTickCount64();
                             m_pSink->Notify(EC_STARVATION, 0, 0);
                             m_bSignaledStarvation = true;
                         }
@@ -3162,6 +3175,7 @@ void CEVRAllocatorPresenter::FlushSamples()
     m_LastSampleOffset = 0;
     m_bLastSampleOffsetValid = false;
     m_bSignaledStarvation = false;
+    m_llStarvationTick = 0;
     m_LastScheduledSampleTime = -1;
     m_LastScheduledUncorrectedSampleTime = -1;
     m_LastScheduledSampleTimeFP = -1;

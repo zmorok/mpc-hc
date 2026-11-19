@@ -196,10 +196,10 @@ namespace DSObjects
 
 
         HANDLE                           m_hEvtQuit;         // Stop rendering thread event
-        bool                             m_bEvtQuit;
+        std::atomic_bool                 m_bEvtQuit;
         HANDLE                           m_hEvtFlush;        // Discard all buffers
         HANDLE                           m_hEvtMixerInput;   // New input is available
-        bool                             m_bEvtFlush;
+        std::atomic_bool                 m_bEvtFlush;
 
         bool                             m_fUseInternalTimer;
         INT32                            m_LastSetOutputRange;
@@ -236,6 +236,7 @@ namespace DSObjects
 
         std::atomic_bool                 m_bSignaledStarvation;
         LONGLONG                         m_StarvationClock;
+        ULONGLONG                        m_llStarvationTick = 0;
 
         // Stats variable for IQualProp
         UINT                             m_pcFrames;

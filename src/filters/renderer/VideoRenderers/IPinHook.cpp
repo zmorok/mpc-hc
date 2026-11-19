@@ -236,10 +236,21 @@ bool MarkNativeSamplesProcessed(REFERENCE_TIME sampleTime)
 {
     CAutoLock lock(&g_nativeSampleLock);
     bool discontinuity = false;
+    bool markedAny = false;
     for (auto& sample : g_nativeSamples) {
         if (!sample.processed && sample.time <= sampleTime) {
             sample.processed = true;
             discontinuity |= sample.discontinuity;
+            markedAny = true;
+        }
+    }
+    if (!markedAny) {
+        for (auto& sample : g_nativeSamples) {
+            if (!sample.processed) {
+                sample.processed = true;
+                discontinuity |= sample.discontinuity;
+                break;
+            }
         }
     }
     g_nativeSampleChanged.SetEvent();
@@ -250,7 +261,9 @@ void ReleaseNativeSamplesBefore(REFERENCE_TIME sampleTime)
 {
     CAutoLock lock(&g_nativeSampleLock);
     g_nativeSamples.erase(std::remove_if(g_nativeSamples.begin(), g_nativeSamples.end(),
-        [sampleTime](const NativeSample& sample) { return sample.time < sampleTime; }), g_nativeSamples.end());
+        [sampleTime](const NativeSample& sample) {
+            return sample.time < sampleTime || (sample.processed && sample.time <= sampleTime);
+        }), g_nativeSamples.end());
     g_nativeSampleChanged.SetEvent();
 }
 
@@ -322,6 +335,7 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
         // Let the next input arrive once the mixer has submitted this one.
         // Its allocator sample remains retained until GPU completion; waiting
         // for that completion here would serialize decode and processing.
+        const ULONGLONG waitStarted = GetTickCount64();
         for (;;) {
             {
                 CAutoLock lock(&g_nativeSampleLock);
@@ -333,7 +347,7 @@ static HRESULT STDMETHODCALLTYPE ReceiveMine(IMemInputPinC* This, IMediaSample* 
                 }
                 auto it = std::find_if(g_nativeSamples.begin(), g_nativeSamples.end(),
                     [pSample](const NativeSample& sample) { return sample.sample == pSample; });
-                if (it == g_nativeSamples.end() || it->processed) {
+                if (it == g_nativeSamples.end() || it->processed || GetTickCount64() - waitStarted >= 100) {
                     break;
                 }
             }
